@@ -59,7 +59,10 @@ fn init_camera(mut commands:Commands){
 			..default()
 		}),
     Tonemapping::BlenderFilmic,
-    //Transform::from_translation(Vec3::new(0.,120.,85.)).looking_at(Vec3::ZERO, Vec3::Y),
-		Transform::from_translation(Vec3::new(0.,180.,120.)).looking_at(Vec3::ZERO, Vec3::Y),
+    
+		
+		//Transform::from_translation(Vec3::new(0.,20.,12.)).looking_at(Vec3::ZERO, Vec3::Y),
+		//Transform::from_translation(Vec3::new(0.,120.,85.)).looking_at(Vec3::ZERO, Vec3::Y),
+		Transform::from_translation(Vec3::new(0.,320.,220.)).looking_at(Vec3::ZERO, Vec3::Y),
   ));
 }
