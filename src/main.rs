@@ -4,10 +4,11 @@ mod macros;
 mod game_state;
 mod ball;
 mod pitch;
+mod game_control;
 use std::f32::consts::PI;
 
-use bevy::{color::palettes::css::WHITE, core_pipeline::tonemapping::Tonemapping, light::{CascadeShadowConfig, CascadeShadowConfigBuilder, DirectionalLightShadowMap}, prelude::*};
-use crate::{assets::AssetsPlugin, ball::BallPlugin, game_state::GameStatePlugin, pitch::PitchPlugin, player::PlayerPlugin};
+use bevy::{color::palettes::css::WHITE, core_pipeline::tonemapping::Tonemapping, light::{ CascadeShadowConfigBuilder, DirectionalLightShadowMap}, prelude::*};
+use crate::{assets::AssetsPlugin, ball::BallPlugin, game_control::GameControlPlugin, game_state::GameStatePlugin, pitch::PitchPlugin, player::PlayerPlugin};
 
 const APP_NAME: &str = "Sportsball";
 fn main() {
@@ -28,6 +29,7 @@ fn main() {
 			PlayerPlugin,
 			BallPlugin,
 			PitchPlugin,
+			GameControlPlugin,
 
 		))
 		.insert_resource(ClearColor(Color::srgb(0., 0., 0.)))

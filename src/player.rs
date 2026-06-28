@@ -1,6 +1,6 @@
 use std::{f32::consts::PI, time::Duration};
 
-use bevy::prelude::*;
+use bevy::{prelude::*, transform};
 use bevy_asset_loader::prelude::*;
 use crate::{assets::AssetLoadState, game_state::GameState, };
 
@@ -15,6 +15,7 @@ impl Plugin for PlayerPlugin{
 			)
 			.add_systems(OnEnter(GameState::Initialize), (init_player, spawn_players).chain())
 			.add_observer(start_player_animation)
+			.add_systems(Update, update_active_marker)
 			;
 	}
 }
@@ -37,6 +38,8 @@ pub struct PlayerAssets {
   pub player_scene: Handle<WorldAsset>,
 	#[asset(path = "player.glb")]
   pub player_gltf: Handle<Gltf>,
+  #[asset(path = "highlight.glb#Scene0")]
+	pub highlight_scene: Handle<WorldAsset>,
 }
 
 fn init_player(
@@ -58,23 +61,23 @@ fn init_player(
 		graph_handle, 
 
 	});
-
 }
 
 fn spawn_players(
 	mut commands: Commands,
 	player_assets: Res<PlayerAssets>,
 ){
-
-
 	for i in 0 .. 11{
-		commands.spawn((
+		let id = commands.spawn((
 			Player,
 			MeshMaterial3d(player_assets.player_material1.clone()),
 			//WorldAssetRoot(player.default_scene.clone().expect("missing default scene")),
 			WorldAssetRoot(player_assets.player_scene.clone()),
 			Transform::from_xyz((i as f32 * 1.5) - 0.75, 0., -1.),
-		));
+		)).id();
+		if i == 0{
+			commands.entity(id).insert(ActivePlayer);
+		}
 	}
 
 	for i in 0 .. 11{
@@ -87,8 +90,14 @@ fn spawn_players(
 		));
 	}
 
+	//spawn active marker
+	commands.spawn((
+		ActiveMarker,
+		WorldAssetRoot(player_assets.highlight_scene.clone()),
+		Transform::from_xyz(0.,0.,0.,),
+		Visibility::Hidden,
+	));
 
-	//.observe(start_player_animation);
 }
 
 fn start_player_animation(
@@ -111,4 +120,27 @@ fn start_player_animation(
 		.insert(AnimationGraphHandle(animations.graph_handle.clone()))
 		.insert(transitions);
 	
+}
+
+#[derive(Component)]
+pub struct ActivePlayer;
+
+
+#[derive(Component)]
+pub struct ActiveMarker;
+
+fn update_active_marker(
+	active_player_query:Query<&GlobalTransform, With<ActivePlayer>>,
+	marker:Single<(&mut Transform, &mut Visibility), With<ActiveMarker>>
+){
+	let (mut transform, mut visible) = marker.into_inner();
+	if active_player_query.is_empty() {
+		*visible = Visibility::Hidden;
+	}
+	else{
+		for player_transform in active_player_query{
+			*transform = Transform::from_translation(player_transform.translation().clone() + Vec3::new(0.,0.5,0.));
+			*visible = Visibility::Visible;
+		}
+	}
 }
