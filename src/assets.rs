@@ -1,5 +1,5 @@
 use  bevy::prelude::*;
-use bevy_asset_loader::{asset_collection::AssetCollection, loading_state::{LoadingState, LoadingStateAppExt, config::ConfigureLoadingState}};
+use bevy_asset_loader::prelude::*;
 
 
 pub struct AssetsPlugin;
@@ -10,7 +10,7 @@ impl Plugin for AssetsPlugin{
 			.add_loading_state(
 				LoadingState::new(AssetLoadState::Startup)
 				.continue_to_state(AssetLoadState::Loaded)
-				.load_collection::<GameAssets>()
+				//.load_collection::<GameAssets>()
 			);
 	}
 }
@@ -27,7 +27,7 @@ pub enum AssetLoadState {
 
 #[derive(AssetCollection, Resource)]
 pub struct GameAssets {
-  #[asset(path = "models.glb")]
-  pub models: Handle<Gltf>,
+//  #[asset(path = "models.glb")]
+//  pub models: Handle<Gltf>,
 }
 
