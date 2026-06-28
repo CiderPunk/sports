@@ -39,6 +39,8 @@ pub struct PitchAssets {
 	pub pitch_border_material: Handle<StandardMaterial>,
 	#[asset(path = "pitch.glb#Material1/std")]
 	pub line_material: Handle<StandardMaterial>,
+	#[asset(path = "pitch.glb#Material4/std")]
+	pub spot_material: Handle<StandardMaterial>,
 }
 
 
@@ -50,7 +52,61 @@ fn pitch_segment(half_width:f32, half_length:f32, translation:Vec3, material:Han
 	}
 }
 
+fn arc(
+	radius:f32,
+	thickness:f32,
+	start_angle:f32,
+	total_angle:f32,
+	segments:u32, 
+	material:Handle<StandardMaterial>,
+) -> impl Scene {
+	let mut verticies = Vec::new();
+	let mut uvs = Vec::new();
+	let mut indices = Vec::new();
+	let segment_angle = total_angle / segments as f32;
+	let arc_length = radius * total_angle;
+	let segment_uv_length = arc_length / segments as f32;
+	let outer_tradius = radius + thickness;
 
+	for i in 0 ..=segments{
+		let angle = start_angle + (i as f32 * segment_angle);
+		let cos = angle.cos();
+		let sin = angle.sin();
+		verticies.push([radius * cos, 0., radius * sin]);
+		verticies.push([outer_tradius* cos, 0., outer_tradius* sin]);
+
+		let current_u = segment_uv_length * i as f32;
+		uvs.push([current_u, 0.]);
+		uvs.push([current_u, 1.]);
+
+		if i < segments{
+			let current_idx = i * 2;
+			indices.extend_from_slice(
+				&([
+					current_idx, current_idx + 1, current_idx + 2,
+					current_idx + 2, current_idx + 1, current_idx + 3,
+				])
+			);	
+		}
+	}
+	bsn!{
+		Mesh3d(asset_value(
+			Mesh::new(bevy::mesh::PrimitiveTopology::TriangleList, RenderAssetUsages::default())
+					.with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, verticies)
+					.with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+					.with_inserted_indices(Indices::U32(indices))
+			))
+		MeshMaterial3d<StandardMaterial>(material)
+	}
+}
+
+
+fn spot(size:f32, material:Handle<StandardMaterial>) -> impl Scene{
+	bsn!{
+		Mesh3d(asset_value(Plane3d::new(Vec3::Y, Vec2::new(0.5 * size, 0.5 * size))))
+		MeshMaterial3d<StandardMaterial>(material)
+	}
+}
 
 fn line(
 	length:f32, 
@@ -144,7 +200,6 @@ fn spawn_pitch(
 	let half_width = pitch_config.width * 0.5;
 	let half_length = pitch_config.length * 0.5;
 
-
 	commands.spawn_scene_list(	
 		pitch_border_list(half_width,half_length,0.5* pitch_config.border, pitch_assets.pitch_border_material.clone())
 	);
@@ -162,8 +217,14 @@ fn spawn_pitch(
 		));
 	}
 	let line_material = pitch_assets.line_material.clone();
-
+	let spot_material = pitch_assets.spot_material.clone();
 	let flip = Quat::from_axis_angle(Vec3::Y, PI);
+
+	let penalty_arc_angle = ((pitch_config.penalty_length - pitch_config.penalty_spot_from_goal) / pitch_config.penalty_arc_radius)
+		.clamp(-1., 1.).acos();
+	let penalty_spot = half_length - pitch_config.penalty_spot_from_goal;
+
+	info!("penalty arc angle: {}", penalty_arc_angle);
 
 
 	commands.spawn_scene_list(bsn_list![
@@ -194,8 +255,36 @@ fn spawn_pitch(
 		//bottom goal box
 		box_lines(pitch_config.goal_area_width, pitch_config.goal_area_length, pitch_config.line_width,line_material.clone())
 		Transform{ translation: Vec3::new(0.,0.,half_length), rotation:flip },
-
-
+		//centre circle
+		arc(pitch_config.centre_circle_radius, pitch_config.line_width, 0., 2. * PI, 32, line_material.clone())
+		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, 0.)),
+		//TL corner
+		arc(pitch_config.corner_arc_radius, pitch_config.line_width, 0., 0.5 * PI, 8, line_material.clone())
+		Transform::from_translation(Vec3::new(-half_width, LINE_FLOAT_HEIGHT, -half_length)),
+		//TR corner
+		arc(pitch_config.corner_arc_radius, pitch_config.line_width, 0.5*PI, 0.5 * PI, 8, line_material.clone())
+		Transform::from_translation(Vec3::new(half_width, LINE_FLOAT_HEIGHT, -half_length)),
+		//BR corner
+		arc(pitch_config.corner_arc_radius, pitch_config.line_width, 1.0*PI, 0.5 * PI, 8, line_material.clone())
+		Transform::from_translation(Vec3::new(half_width, LINE_FLOAT_HEIGHT, half_length)),
+		//BL corner
+		arc(pitch_config.corner_arc_radius, pitch_config.line_width, 1.5*PI, 0.5 * PI, 8, line_material.clone())
+		Transform::from_translation(Vec3::new(-half_width, LINE_FLOAT_HEIGHT, half_length)),
+		//top penalty arc
+		arc(pitch_config.penalty_arc_radius, pitch_config.line_width, (0.5 * PI) -penalty_arc_angle, 2. * penalty_arc_angle, 12, line_material.clone())
+		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, -penalty_spot)),
+		//bottom penalty arc
+		arc(pitch_config.penalty_arc_radius, pitch_config.line_width, (1.5 * PI) -penalty_arc_angle, 2. * penalty_arc_angle, 12, line_material.clone())
+		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, penalty_spot)),
+		//centre spot
+		spot(0.5, spot_material.clone())
+		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT,0.)),
+		//top penalty spot
+		spot(0.5, spot_material.clone())
+		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, -penalty_spot)),
+		//bottom penalty spot
+		spot(0.5, spot_material.clone())
+		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, penalty_spot)),
 	]);
 }
 
@@ -215,7 +304,7 @@ pub struct PitchConfiguration{
 	goal_area_length:f32,
 	goal_width:f32,
 	corner_arc_radius:f32,
-	penalty_spot_dist:f32,
+	penalty_spot_from_goal:f32,
 	penalty_arc_radius:f32,
 }
 
@@ -233,7 +322,7 @@ impl Default for PitchConfiguration{
 			goal_area_length: 5.5,
 			goal_width: 7.32,
 			corner_arc_radius: 1.,
-			penalty_spot_dist: 11.,
+			penalty_spot_from_goal: 11.,
 			penalty_arc_radius: 9.15,
     	line_width: 0.2,
 		}
