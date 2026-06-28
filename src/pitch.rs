@@ -1,11 +1,11 @@
 use std::f32::consts::PI;
 
-use bevy::{asset::RenderAssetUsages, math::VectorSpace, mesh::Indices, prelude::*};
+use bevy::{asset::RenderAssetUsages, color::palettes::css::PINK, light::{NotShadowCaster, NotShadowReceiver}, math::VectorSpace, mesh::Indices, prelude::*};
 use bevy_asset_loader::prelude::*;
 
 use crate::{assets::AssetLoadState, game_state::GameState};
 
-const LINE_FLOAT_HEIGHT: f32 = 0.1;
+const LINE_FLOAT_HEIGHT: f32 = 0.05;
 
 pub struct PitchPlugin;
 impl Plugin for PitchPlugin{
@@ -22,6 +22,7 @@ impl Plugin for PitchPlugin{
 				LoadingStateConfig::new(AssetLoadState::Startup)
 				.load_collection::<PitchAssets>(),
 			)			
+			.add_systems(OnEnter(GameState::Initialize), modify_materials)
 			.add_systems(OnEnter(GameState::Playing), spawn_pitch);
 	}
 }
@@ -40,7 +41,7 @@ pub struct PitchAssets {
 	#[asset(path = "pitch.glb#Material1/std")]
 	pub line_material: Handle<StandardMaterial>,
 	#[asset(path = "pitch.glb#Material4/std")]
-	pub spot_material: Handle<StandardMaterial>,
+	pub spot_material: Handle<StandardMaterial>,	
 }
 
 
@@ -49,6 +50,7 @@ fn pitch_segment(half_width:f32, half_length:f32, translation:Vec3, material:Han
 		Mesh3d(asset_value(Plane3d::new(Vec3::Y, Vec2::new(half_width, half_length ) )))
 		Transform::from_translation(translation)
 		MeshMaterial3d<StandardMaterial>(material)
+		NotShadowCaster 
 	}
 }
 
@@ -97,6 +99,8 @@ fn arc(
 					.with_inserted_indices(Indices::U32(indices))
 			))
 		MeshMaterial3d<StandardMaterial>(material)
+		NotShadowCaster 
+
 	}
 }
 
@@ -105,6 +109,8 @@ fn spot(size:f32, material:Handle<StandardMaterial>) -> impl Scene{
 	bsn!{
 		Mesh3d(asset_value(Plane3d::new(Vec3::Y, Vec2::new(0.5 * size, 0.5 * size))))
 		MeshMaterial3d<StandardMaterial>(material)
+		NotShadowCaster 
+
 	}
 }
 
@@ -157,6 +163,7 @@ fn line(
 			)
 		)
 		MeshMaterial3d<StandardMaterial>(material)
+		NotShadowCaster
 	}
 }
 
@@ -191,11 +198,26 @@ fn box_lines(width:f32, length:f32, thickness:f32, material:Handle<StandardMater
 	}
 }
 
+fn modify_materials(
+	pitch_assets:ResMut<PitchAssets>,
+	mut materials: ResMut<Assets<StandardMaterial>>,
+){
+	let alpha_mat_handles = [
+		pitch_assets.line_material.clone(),
+		pitch_assets.spot_material.clone(),
+	];
+	for handle in alpha_mat_handles{
+		if let Some(mut material) = materials.get_mut(&handle){
+			material.alpha_mode = AlphaMode::Add;
+		}
+	}
+}
 
 fn spawn_pitch(
 	mut commands:Commands,
 	pitch_assets:Res<PitchAssets>,
 	pitch_config:Res<PitchConfiguration>,
+
 ){
 	let half_width = pitch_config.width * 0.5;
 	let half_length = pitch_config.length * 0.5;
@@ -216,14 +238,14 @@ fn spawn_pitch(
 			} 
 		));
 	}
+
 	let line_material = pitch_assets.line_material.clone();
 	let spot_material = pitch_assets.spot_material.clone();
-	let flip = Quat::from_axis_angle(Vec3::Y, PI);
 
+	let flip = Quat::from_axis_angle(Vec3::Y, PI);
 	let penalty_arc_angle = ((pitch_config.penalty_length - pitch_config.penalty_spot_from_goal) / pitch_config.penalty_arc_radius)
 		.clamp(-1., 1.).acos();
 	let penalty_spot = half_length - pitch_config.penalty_spot_from_goal;
-
 	info!("penalty arc angle: {}", penalty_arc_angle);
 
 
@@ -256,7 +278,7 @@ fn spawn_pitch(
 		box_lines(pitch_config.goal_area_width, pitch_config.goal_area_length, pitch_config.line_width,line_material.clone())
 		Transform{ translation: Vec3::new(0.,0.,half_length), rotation:flip },
 		//centre circle
-		arc(pitch_config.centre_circle_radius, pitch_config.line_width, 0., 2. * PI, 32, line_material.clone())
+		arc(pitch_config.centre_circle_radius, pitch_config.line_width, 0., 2. * PI, 64, line_material.clone())
 		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, 0.)),
 		//TL corner
 		arc(pitch_config.corner_arc_radius, pitch_config.line_width, 0., 0.5 * PI, 8, line_material.clone())

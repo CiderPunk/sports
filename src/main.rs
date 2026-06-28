@@ -6,7 +6,7 @@ mod ball;
 mod pitch;
 use std::f32::consts::PI;
 
-use bevy::{color::palettes::css::WHITE, core_pipeline::tonemapping::Tonemapping, prelude::*};
+use bevy::{color::palettes::css::WHITE, core_pipeline::tonemapping::Tonemapping, light::{CascadeShadowConfig, CascadeShadowConfigBuilder, DirectionalLightShadowMap}, prelude::*};
 use crate::{assets::AssetsPlugin, ball::BallPlugin, game_state::GameStatePlugin, pitch::PitchPlugin, player::PlayerPlugin};
 
 const APP_NAME: &str = "Sportsball";
@@ -33,9 +33,10 @@ fn main() {
 		.insert_resource(ClearColor(Color::srgb(0., 0., 0.)))
     .insert_resource(GlobalAmbientLight {
         color: WHITE.into(),
-        brightness: 1000.0,
+        brightness: 1_000.0,
         ..default()
     })
+		.insert_resource(DirectionalLightShadowMap { size: 4096 })
 		.add_systems(Startup, init_camera)
 		.run();
 }
@@ -59,10 +60,27 @@ fn init_camera(mut commands:Commands){
 			..default()
 		}),
     Tonemapping::BlenderFilmic,
-    
-		
 		//Transform::from_translation(Vec3::new(0.,20.,12.)).looking_at(Vec3::ZERO, Vec3::Y),
-		//Transform::from_translation(Vec3::new(0.,120.,85.)).looking_at(Vec3::ZERO, Vec3::Y),
-		Transform::from_translation(Vec3::new(0.,320.,220.)).looking_at(Vec3::ZERO, Vec3::Y),
+		//Transform::from_translation(Vec3::new(0.,100.,64.)).looking_at(Vec3::ZERO, Vec3::Y),
+		
+		//best!
+		Transform::from_translation(Vec3::new(0.,140.,120.)).looking_at(Vec3::ZERO, Vec3::Y),
+		//Transform::from_translation(Vec3::new(0.,320.,220.)).looking_at(Vec3::ZERO, Vec3::Y),
   ));
+	commands.spawn((
+		DirectionalLight {
+			color: WHITE.into(),
+			shadow_maps_enabled:true,
+			illuminance:5_000.,
+			contact_shadows_enabled:true,
+			shadow_depth_bias:0.2,
+			shadow_normal_bias:0.2,
+				..default()
+		},
+		CascadeShadowConfigBuilder {
+				maximum_distance: 500.0, // Adjust this higher until shadows stop clipping
+				..default()
+		}.build(),
+		Transform::from_xyz(300., 1000., 200.).looking_at(Vec3::ZERO, Vec3::Y),
+	));
 }

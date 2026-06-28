@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{f32::consts::PI, time::Duration};
 
 use bevy::prelude::*;
 use bevy_asset_loader::prelude::*;
@@ -65,13 +65,29 @@ fn spawn_players(
 	mut commands: Commands,
 	player_assets: Res<PlayerAssets>,
 ){
-	commands.spawn((
-		Player,
-		MeshMaterial3d(player_assets.player_material1.clone()),
-		//WorldAssetRoot(player.default_scene.clone().expect("missing default scene")),
-		WorldAssetRoot(player_assets.player_scene.clone()),
-		Transform::from_xyz(0., 0., 0.),
-	));
+
+
+	for i in 0 .. 11{
+		commands.spawn((
+			Player,
+			MeshMaterial3d(player_assets.player_material1.clone()),
+			//WorldAssetRoot(player.default_scene.clone().expect("missing default scene")),
+			WorldAssetRoot(player_assets.player_scene.clone()),
+			Transform::from_xyz((i as f32 * 1.5) - 0.75, 0., -1.),
+		));
+	}
+
+	for i in 0 .. 11{
+		commands.spawn((
+			Player,
+			MeshMaterial3d(player_assets.player_material1.clone()),
+			//WorldAssetRoot(player.default_scene.clone().expect("missing default scene")),
+			WorldAssetRoot(player_assets.player_scene.clone()),
+			Transform::from_xyz((i as f32 * 1.5) - 0.75, 0., 1.).with_rotation(Quat::from_axis_angle(Vec3::Y, PI)),
+		));
+	}
+
+
 	//.observe(start_player_animation);
 }
 
@@ -87,9 +103,9 @@ fn start_player_animation(
 		return; 
 	};
 	let mut transitions = AnimationTransitions::new();
-	transitions.play(&mut anim_player, animations.animations[0], Duration::ZERO).repeat();
+	transitions.play(&mut anim_player, animations.animations[1], Duration::ZERO).repeat();
 
-	anim_player.adjust_speeds(2.0);
+	anim_player.adjust_speeds(1.0);
 
 	commands.entity(event.entity)
 		.insert(AnimationGraphHandle(animations.graph_handle.clone()))
