@@ -6,13 +6,14 @@ mod ball;
 mod pitch;
 mod game_control;
 mod game_schedule;
+mod game_camera;
 use std::f32::consts::PI;
 
 use bevy::{color::palettes::css::WHITE, core_pipeline::tonemapping::Tonemapping, light::{ CascadeShadowConfigBuilder, DirectionalLightShadowMap}, prelude::*};
 use bevy_enhanced_input::EnhancedInputPlugin;
 use bevy_prng::WyRand;
 use bevy_rand::plugin::EntropyPlugin;
-use crate::{assets::AssetsPlugin, ball::BallPlugin, game_control::GameControlPlugin, game_schedule::GameSchedulePlugin, game_state::GameStatePlugin, pitch::PitchPlugin, player::PlayerPlugin};
+use crate::{assets::AssetsPlugin, ball::BallPlugin, game_camera::GameCameraPlugin, game_control::GameControlPlugin, game_schedule::GameSchedulePlugin, game_state::GameStatePlugin, pitch::PitchPlugin, player::PlayerPlugin};
 
 const APP_NAME: &str = "Sportsball";
 fn main() {
@@ -36,6 +37,7 @@ fn main() {
 			GameStatePlugin,
 			GameSchedulePlugin,
 			AssetsPlugin,
+			GameCameraPlugin,
 			PlayerPlugin,
 			BallPlugin,
 			PitchPlugin,
@@ -48,36 +50,14 @@ fn main() {
         ..default()
     })
 		.insert_resource(DirectionalLightShadowMap { size: 4096 })
-		.add_systems(Startup, init_camera)
+		.add_systems(Startup, init_lights)
 		.run();
 }
 
 
 
-fn init_camera(mut commands:Commands){
-	// Narrow FOV (~12 degrees) simulates a long telephoto lens
-	let long_lens_fov = 12.0 * PI / 180.0; 
-  commands.spawn((
-    Camera3d{
-		
-      ..default()
-    },
-    Camera {
-      order: 1, 
-      ..default()
-    },
-		Projection::Perspective(PerspectiveProjection { 
-			fov: long_lens_fov,
-			..default()
-		}),
-    Tonemapping::BlenderFilmic,
-		//Transform::from_translation(Vec3::new(0.,20.,12.)).looking_at(Vec3::ZERO, Vec3::Y),
-		//Transform::from_translation(Vec3::new(0.,100.,64.)).looking_at(Vec3::ZERO, Vec3::Y),
-		
-		//best!
-		Transform::from_translation(Vec3::new(0.,140.,120.)).looking_at(Vec3::ZERO, Vec3::Y),
-		//Transform::from_translation(Vec3::new(0.,320.,220.)).looking_at(Vec3::ZERO, Vec3::Y),
-  ));
+fn init_lights(mut commands:Commands){
+
 	commands.spawn((
 		DirectionalLight {
 			color: WHITE.into(),

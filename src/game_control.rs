@@ -33,21 +33,11 @@ struct Pass;
 pub struct GameControl;
 
 
-fn direction_input(
-	direction:On<Fire<MovementInput>>,
-	query:Query<&mut Movement, With<ActivePlayer>>,
-){
-	info!("Movement {}", direction.value);
-	for mut movement in query{
-		movement.direction = direction.value;
-	}
-}
-
 fn direction_input_stopped(
 	_:On<Complete<MovementInput>>,
 	query:Query<&mut Movement, With<ActivePlayer>>,
 ){
-	info!("Movement stopped");
+	//info!("Movement stopped");
 	for mut movement in query{
 		movement.direction = Vec2::ZERO;
 	}
@@ -58,7 +48,7 @@ fn direction_input_started(
 	direction:On<Fire<MovementInput>>,
 	query:Query<&mut Movement, With<ActivePlayer>>,
 ){
-	info!("Movement {}", direction.value);
+	//info!("Movement {}", direction.value);
 	for mut movement in query{
 		movement.direction = direction.value;
 	}

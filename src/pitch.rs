@@ -314,8 +314,8 @@ fn spawn_pitch(
 
 #[derive(Resource)]
 pub struct PitchConfiguration{
-	width:f32,
-	length:f32,
+	pub width:f32,
+	pub length:f32,
 	border:f32,
 	stripe_count:u32,
 	line_width:f32,
@@ -324,9 +324,9 @@ pub struct PitchConfiguration{
 	penalty_length:f32,
 	goal_area_width:f32,
 	goal_area_length:f32,
-	goal_width:f32,
+	pub goal_width:f32,
 	corner_arc_radius:f32,
-	penalty_spot_from_goal:f32,
+	pub penalty_spot_from_goal:f32,
 	penalty_arc_radius:f32,
 }
 

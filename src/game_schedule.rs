@@ -6,8 +6,9 @@ impl Plugin for GameSchedulePlugin{
 	fn build(&self, app: &mut App) {
 		app
 			.configure_sets(Update, (
-				GameSchedule::EntityUpdates, 
-				GameSchedule::MoveEntities,
+				GameSchedule::PlayerUpdates, 
+				GameSchedule::BallUpdate,
+				GameSchedule::MoveBall,
 			).chain()
 			.run_if(in_state(GameState::Playing)))
 		;
@@ -17,6 +18,7 @@ impl Plugin for GameSchedulePlugin{
 
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum GameSchedule{
-  EntityUpdates,
-  MoveEntities,
+  PlayerUpdates,
+	BallUpdate,
+	MoveBall,
 }

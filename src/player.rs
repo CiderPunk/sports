@@ -19,7 +19,7 @@ impl Plugin for PlayerPlugin{
 			.add_systems(OnEnter(GameState::Initialize), (init_markers, init_player, spawn_players).chain())
 			//.add_observer(init_player_animations)
 			.add_systems(Update, update_active_marker)
-			.add_systems(Update, (move_player, animate_player).in_set(GameSchedule::MoveEntities))
+			.add_systems(Update, (move_player, animate_player).in_set(GameSchedule::PlayerUpdates))
 			;
 	}
 }
@@ -107,7 +107,7 @@ fn spawn_players(
 			MeshMaterial3d(player_assets.player_material1.clone()),
 			//WorldAssetRoot(player.default_scene.clone().expect("missing default scene")),
 			WorldAssetRoot(player_assets.player_scene.clone()),
-			Transform::from_xyz((i as f32 * 1.5) - 0.75, 0., -1.),
+			Transform::from_xyz((i as f32 * 3.) - 0.75, 0., -1.),
 		)).observe(init_player_animations)
 		.id();
 		if i == 0{
@@ -115,15 +115,6 @@ fn spawn_players(
 		}
 	}
 
-	for i in 0 .. 11{
-		commands.spawn((
-			Player,
-			MeshMaterial3d(player_assets.player_material1.clone()),
-			//WorldAssetRoot(player.default_scene.clone().expect("missing default scene")),
-			WorldAssetRoot(player_assets.player_scene.clone()),
-			Transform::from_xyz((i as f32 * 1.5) - 0.75, 0., 1.).with_rotation(Quat::from_axis_angle(Vec3::Y, PI)),
-		)).observe(init_player_animations);
-	}
 
 	//spawn active marker
 	commands.spawn((
@@ -149,9 +140,7 @@ fn init_player_animations(
 		if let Ok(mut anim_player) = anim_player_query.get_mut(descendant) {
 			//info!("Foundanimation player");
 			let mut transitions = AnimationTransitions::new();
-
 			transitions.play(&mut anim_player, animations.animations[0], Duration::ZERO).repeat();
-			anim_player.adjust_speeds(1.0);
 			commands.entity(descendant)
 				.insert(AnimationGraphHandle(animations.graph_handle.clone()))
 				.insert(transitions);
@@ -189,6 +178,7 @@ pub struct ActivePlayer;
 #[derive(Component, Debug, Default)]
 pub struct Movement{
 	pub direction:Vec2,
+	target_angle:f32,
 }
 
 
@@ -224,10 +214,15 @@ fn animate_player(
 		let Ok((mut player, mut transition)) = animator_query.get_mut(animator.entity) else { continue; };
 		if movement.direction == Vec2::ZERO{
 			if transition.get_main_animation() != Some(animations.animations[0]){
-				transition.play(&mut player, animations.animations[0], Duration::from_secs_f32(0.2)).repeat();
+				transition.play(&mut player, animations.animations[0], Duration::from_secs_f32(0.2)).repeat().set_speed(1.);
 			}
 		}
 		else{
+
+			if let Some(active_animation) = player.animation_mut(animations.animations[2]){
+				active_animation.set_speed(movement.direction.length().clamp(0.1,1.0));
+			}
+
 			if transition.get_main_animation() != Some(animations.animations[2]){
 				transition.play(&mut player, animations.animations[2], Duration::from_secs_f32(0.1)).repeat();
 			}
@@ -237,17 +232,14 @@ fn animate_player(
 
 
 fn move_player(
-	mut query:Query<(&Movement, &mut Transform, ), With<Player>>,
+	query:Query<(&mut Movement, &mut Transform, ), With<Player>>,
 	time:Res<Time>,
 ){
-	for (movement, mut transform) in query{
-		if movement.direction == Vec2::ZERO{
-			continue;
+	for (mut movement, mut transform) in query{
+		if movement.direction != Vec2::ZERO{
+			movement.target_angle = movement.direction.to_angle();
 		}
-
-
 		transform.translation += Vec3::new(movement.direction.x, 0., -movement.direction.y) * time.delta_secs() * PLAYER_SPEED;
-		transform.rotation = transform.rotation.rotate_towards(Quat::from_axis_angle(Vec3::Y, movement.direction.to_angle() + (PI * 0.5)).normalize(), time.delta_secs() * 4.0 *  PI);
-		
+		transform.rotation = transform.rotation.rotate_towards(Quat::from_axis_angle(Vec3::Y, movement.target_angle + (PI * 0.5)).normalize(), time.delta_secs() * 4.0 *  PI);
 	}
 }
