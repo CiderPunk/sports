@@ -1,11 +1,12 @@
 use std::{f32::consts::PI, time::Duration};
 
-use bevy::{animation::AnimationTargetId, gltf::GltfMesh, light::NotShadowCaster, math::VectorSpace, prelude::*, world_serialization::WorldInstanceReady};
+use bevy::{animation::AnimationTargetId, gltf::GltfMesh, light::NotShadowCaster, math::VectorSpace, mesh::skinning::Influence, prelude::*, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, };
+use crate::{assets::AssetLoadState, ball::BallMotion, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, };
 
-		const PLAYER_SPEED: f32 = 10.;
-
+const PLAYER_SPEED: f32 = 10.;
+const PLAYER_INFLUENCE:f32 = 1.5;
+const PLAYER_DRIBBLE_CENTRE:f32 = 0.5;
 
 pub struct PlayerPlugin;
 
@@ -20,6 +21,8 @@ impl Plugin for PlayerPlugin{
 			//.add_observer(init_player_animations)
 			.add_systems(Update, update_active_marker)
 			.add_systems(Update, (move_player, animate_player).in_set(GameSchedule::PlayerUpdates))
+			.add_systems(Update, dribble.in_set(GameSchedule::BallUpdate))
+			
 			;
 	}
 }
@@ -150,28 +153,6 @@ fn init_player_animations(
 	}	
 }
 
-/*
-fn start_player_animation(
-	event:On<Add, AnimationPlayer>,
-	mut commands:Commands,
-  mut query: Query<&mut AnimationPlayer>,
-	//mut animation_player_query:Query<&mut AnimationPlayer>,
-	animations: Res<PlayerAnimations>,
-){
-	info!("starting animations");
-	let Ok(mut anim_player) = query.get_mut(event.entity) else{ 
-		return; 
-	};
-	let mut transitions = AnimationTransitions::new();
-	transitions.play(&mut anim_player, animations.animations[1], Duration::ZERO).repeat();
-	anim_player.adjust_speeds(1.0);
-	commands.entity(event.entity)
-		.insert(AnimationGraphHandle(animations.graph_handle.clone()))
-		.insert(transitions);
-}
- */
-
-
 #[derive(Component)]
 pub struct ActivePlayer;
 
@@ -180,8 +161,6 @@ pub struct Movement{
 	pub direction:Vec2,
 	target_angle:f32,
 }
-
-
 
 #[derive(Component)]
 pub struct ActiveMarker;
@@ -230,7 +209,6 @@ fn animate_player(
 	}
 }
 
-
 fn move_player(
 	query:Query<(&mut Movement, &mut Transform, ), With<Player>>,
 	time:Res<Time>,
@@ -241,5 +219,28 @@ fn move_player(
 		}
 		transform.translation += Vec3::new(movement.direction.x, 0., -movement.direction.y) * time.delta_secs() * PLAYER_SPEED;
 		transform.rotation = transform.rotation.rotate_towards(Quat::from_axis_angle(Vec3::Y, movement.target_angle + (PI * 0.5)).normalize(), time.delta_secs() * 4.0 *  PI);
+	}
+}
+
+
+fn dribble(
+	players:Query<(&Transform, &Movement), With<ActivePlayer>>,
+	ball:Single<(&Transform, &mut BallMotion)>,
+	time:Res<Time>,
+){
+	let (ball_transform, mut ball_motion) = ball.into_inner();
+	let ball_translation = ball_transform.translation;
+	for (transform, player_movement) in players{
+
+
+		let forward = transform.forward();
+		let distance = (((forward * PLAYER_DRIBBLE_CENTRE) + transform.translation) - ball_translation).length();
+		let influence= (PLAYER_INFLUENCE / distance).clamp(0., 1.);
+		if influence > 0.5{
+			info!("influence {} ", influence);
+			let player_vel = player_movement.direction * PLAYER_SPEED;
+			let diff = Vec3::new(player_vel.x, 0., player_vel.y) - ball_motion.velocity;
+			ball_motion.velocity += diff * influence * time.delta_secs();
+		}
 	}
 }

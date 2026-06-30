@@ -57,7 +57,7 @@ fn spawn_ball(
 		WorldAssetRoot(ball_assets.ball_scene.clone()),
 		//Transform::from_translation(Vec3::new(0., BALL_GROUND_LEVEL ,0.)).with_scale(Vec3::splat(BALL_SCALE)),
 		Transform::from_translation(Vec3::new(-30., 10. ,0.)).with_scale(Vec3::splat(BALL_SCALE)),
-		Motion{ 
+		BallMotion{ 
 			velocity: Vec3 { x: 5., y: 0., z: 0. },
 			..default()
 		}
@@ -65,7 +65,7 @@ fn spawn_ball(
 }
 
 fn move_ball(
-	ball:Single<(&mut Motion, &mut Transform)>,
+	ball:Single<(&mut BallMotion, &mut Transform)>,
 	time:Res<Time>,
 ){
 	let (mut motion, mut transform) = ball.into_inner();
@@ -111,12 +111,12 @@ fn move_ball(
 
 
 #[derive(Component)]
-#[require(Motion)]
+#[require(BallMotion)]
 pub struct Ball;
 
 #[derive(Component, Default)]
-pub struct Motion{
-	velocity:Vec3,
+pub struct BallMotion{
+	pub velocity:Vec3,
 	roll_axis:Option<Dir3>,
 	roll_speed:f32,
 }
