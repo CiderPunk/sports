@@ -1,0 +1,10 @@
+[target.'cfg(target_family = "wasm")']
+runner = "wasm-server-runner"
+rustflags = ['--cfg=getrandom_backend="wasm_js"']
+
+# for Windows
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld.exe"
+
+[alias]
+rw = "run --features watcher"
