@@ -244,7 +244,10 @@ fn move_player(
 		if movement.direction == Vec2::ZERO{
 			continue;
 		}
+
+
 		transform.translation += Vec3::new(movement.direction.x, 0., -movement.direction.y) * time.delta_secs() * PLAYER_SPEED;
-		transform.rotation = Quat::from_axis_angle(Vec3::Y, movement.direction.to_angle() + (PI * 0.5));
+		transform.rotation = transform.rotation.rotate_towards(Quat::from_axis_angle(Vec3::Y, movement.direction.to_angle() + (PI * 0.5)).normalize(), time.delta_secs() * 4.0 *  PI);
+		
 	}
 }
