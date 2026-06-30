@@ -9,6 +9,12 @@ bevy_asset_loader = "0.27.0"
 bevy_enhanced_input = "0.26.0"
 bevy_pbr = "0.19.0"
 
+rand_core = "0.10"
+bevy_rand = "0.15"
+bevy_prng = { version = "0.15", features = ["chacha20", "wyrand"] }
+rand = "0.9.2"
+
+
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]
 opt-level = 1

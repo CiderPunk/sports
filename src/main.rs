@@ -5,10 +5,14 @@ mod game_state;
 mod ball;
 mod pitch;
 mod game_control;
+mod game_schedule;
 use std::f32::consts::PI;
 
 use bevy::{color::palettes::css::WHITE, core_pipeline::tonemapping::Tonemapping, light::{ CascadeShadowConfigBuilder, DirectionalLightShadowMap}, prelude::*};
-use crate::{assets::AssetsPlugin, ball::BallPlugin, game_control::GameControlPlugin, game_state::GameStatePlugin, pitch::PitchPlugin, player::PlayerPlugin};
+use bevy_enhanced_input::EnhancedInputPlugin;
+use bevy_prng::WyRand;
+use bevy_rand::plugin::EntropyPlugin;
+use crate::{assets::AssetsPlugin, ball::BallPlugin, game_control::GameControlPlugin, game_schedule::GameSchedulePlugin, game_state::GameStatePlugin, pitch::PitchPlugin, player::PlayerPlugin};
 
 const APP_NAME: &str = "Sportsball";
 fn main() {
@@ -24,13 +28,18 @@ fn main() {
 			..default()
 		}))
 		.add_plugins((
+			EnhancedInputPlugin,
+			EntropyPlugin::<WyRand>::default()
+
+		))		
+		.add_plugins((
 			GameStatePlugin,
+			GameSchedulePlugin,
 			AssetsPlugin,
 			PlayerPlugin,
 			BallPlugin,
 			PitchPlugin,
 			GameControlPlugin,
-
 		))
 		.insert_resource(ClearColor(Color::srgb(0., 0., 0.)))
     .insert_resource(GlobalAmbientLight {
