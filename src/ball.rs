@@ -72,6 +72,9 @@ fn move_ball(
 
 	//move the ball
 	transform.translation += motion.velocity * time.delta_secs();
+
+
+	//info!("ball translation:{} velocity:{}", transform.translation, motion.velocity);
 	//rotate it!
 	if let Some(axis) = motion.roll_axis{
 		transform.rotate_axis(axis, -motion.roll_speed * time.delta_secs());
@@ -86,8 +89,14 @@ fn move_ball(
 	}
 	else{
 		//roll speed
-		motion.roll_axis = Dir3::from_xyz(motion.velocity.z, 0., motion.velocity.x).ok();
-		motion.roll_speed = motion.velocity.xz().length() * PI * BALL_RADIUS;
+
+		if motion.velocity.z > f32::EPSILON || motion.velocity.x > f32::EPSILON{
+			motion.roll_axis = Dir3::from_xyz(motion.velocity.z, 0., motion.velocity.x).ok();
+			motion.roll_speed = motion.velocity.xz().length() * PI * BALL_RADIUS;
+		}
+		else{
+			motion.roll_axis = None;
+		}
 
 		if motion.velocity.y < -MIN_BOUNCE_SPEED {
 			//bounce!

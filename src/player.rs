@@ -21,7 +21,7 @@ impl Plugin for PlayerPlugin{
 			//.add_observer(init_player_animations)
 			.add_systems(Update, update_active_marker)
 			.add_systems(Update, (move_player, animate_player).in_set(GameSchedule::PlayerUpdates))
-			.add_systems(Update, dribble.in_set(GameSchedule::BallUpdate))
+			//.add_systems(Update, dribble.in_set(GameSchedule::BallUpdate))
 			
 			;
 	}
@@ -231,16 +231,14 @@ fn dribble(
 	let (ball_transform, mut ball_motion) = ball.into_inner();
 	let ball_translation = ball_transform.translation;
 	for (transform, player_movement) in players{
-
-
 		let forward = transform.forward();
 		let distance = (((forward * PLAYER_DRIBBLE_CENTRE) + transform.translation) - ball_translation).length();
 		let influence= (PLAYER_INFLUENCE / distance).clamp(0., 1.);
 		if influence > 0.5{
 			info!("influence {} ", influence);
 			let player_vel = player_movement.direction * PLAYER_SPEED;
-			let diff = Vec3::new(player_vel.x, 0., player_vel.y) - ball_motion.velocity;
-			ball_motion.velocity += diff * influence * time.delta_secs();
+			let diff = ball_motion.velocity - Vec3::new(player_vel.x, 0., -player_vel.y) ;
+			ball_motion.velocity -= diff * influence * time.delta_secs();
 		}
 	}
 }
