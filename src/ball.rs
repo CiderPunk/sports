@@ -3,7 +3,7 @@ use std::f32::consts::PI;
 use bevy::{math::VectorSpace, prelude::*};
 
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, game_schedule::GameSchedule, game_state::GameState, pitch::PitchConfiguration};
+use crate::{assets::AssetLoadState, colliders::CollisionCylinder, collisions::{ HitResult, SphereCast}, game_schedule::GameSchedule, game_state::GameState, player::Player};
 
 
 const BALL_SCALE: f32 = 0.5;
@@ -66,12 +66,39 @@ fn spawn_ball(
 
 fn move_ball(
 	ball:Single<(&mut BallMotion, &mut Transform)>,
+	players:Query<(&GlobalTransform,&CollisionCylinder, Entity), With<Player>>,
 	time:Res<Time>,
 ){
 	let (mut motion, mut transform) = ball.into_inner();
 
-	//move the ball
-	transform.translation += motion.velocity * time.delta_secs();
+
+	let speed = motion.velocity.length();
+	if speed >f32::EPSILON {
+		let sphere_cast = SphereCast{ origin: transform.translation, direction: Dir3::new_unchecked( motion.velocity / speed), radius: BALL_RADIUS, distance: speed };
+
+		let mut closest:Option<HitResult> = None;
+		for (player_transform, collision_cylinder, entity) in players{
+
+			if let Some(hit) = sphere_cast.interset_sphere_vertical_cylinder(player_transform.translation(), collision_cylinder.radius, collision_cylinder.height, entity){
+				match closest {
+					Some(last) => if hit.distance < last.distance { 
+						closest = Some(hit);
+					}
+					None=> closest =Some(hit)
+				}
+			}
+		}
+
+
+		match closest{
+			Some(hit)=> {
+				transform.translation = hit.position;
+				motion.velocity = hit.normal * speed;
+			}
+			None => 		transform.translation += motion.velocity * time.delta_secs()
+		}
+	}
+
 
 
 	//info!("ball translation:{} velocity:{}", transform.translation, motion.velocity);
@@ -79,7 +106,6 @@ fn move_ball(
 	if let Some(axis) = motion.roll_axis{
 		transform.rotate_axis(axis, -motion.roll_speed * time.delta_secs());
 	}
-
 	//ball in the air, apply gravity!
 	if transform.translation.y > BALL_RADIUS{
 		let force = AIR_DAMPING * motion.velocity.length_squared();
@@ -114,7 +140,7 @@ fn move_ball(
 			}
 		}		
 		transform.translation.y = BALL_RADIUS;
-	}
+	} 
 }
 
 
@@ -129,3 +155,6 @@ pub struct BallMotion{
 	roll_axis:Option<Dir3>,
 	roll_speed:f32,
 }
+
+
+

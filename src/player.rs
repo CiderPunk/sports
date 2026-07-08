@@ -2,11 +2,15 @@ use std::{f32::consts::PI, time::Duration};
 
 use bevy::{animation::AnimationTargetId, gltf::GltfMesh, light::NotShadowCaster, math::VectorSpace, mesh::skinning::Influence, prelude::*, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, ball::BallMotion, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, };
+use crate::{assets::AssetLoadState, ball::BallMotion, colliders::CollisionCylinder, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_INFLUENCE:f32 = 1.5;
 const PLAYER_DRIBBLE_CENTRE:f32 = 0.5;
+
+const PLAYER_COLLISION_RADIUS:f32 = 0.5;
+const PLAYER_HEIGHT:f32 = 1.8;
+
 
 pub struct PlayerPlugin;
 
@@ -26,6 +30,8 @@ impl Plugin for PlayerPlugin{
 			;
 	}
 }
+
+
 
 #[derive(Resource)]
 struct PlayerAnimations {
@@ -111,6 +117,7 @@ fn spawn_players(
 			//WorldAssetRoot(player.default_scene.clone().expect("missing default scene")),
 			WorldAssetRoot(player_assets.player_scene.clone()),
 			Transform::from_xyz((i as f32 * 3.) - 0.75, 0., -1.),
+			CollisionCylinder{ radius: PLAYER_COLLISION_RADIUS, height: PLAYER_HEIGHT }
 		)).observe(init_player_animations)
 		.id();
 		if i == 0{
