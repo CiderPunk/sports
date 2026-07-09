@@ -8,7 +8,7 @@ const PLAYER_SPEED: f32 = 10.;
 const PLAYER_INFLUENCE:f32 = 1.5;
 const PLAYER_DRIBBLE_CENTRE:f32 = 0.5;
 
-const PLAYER_COLLISION_RADIUS:f32 = 0.5;
+const PLAYER_COLLISION_RADIUS:f32 = 0.25;
 const PLAYER_HEIGHT:f32 = 1.8;
 
 
@@ -110,7 +110,7 @@ fn spawn_players(
 	mut commands: Commands,
 	player_assets: Res<PlayerAssets>,
 ){
-	for i in 0 .. 11{
+	for i in 0 .. 1{
 		let id = commands.spawn((
 			Player,
 			MeshMaterial3d(player_assets.player_material1.clone()),
@@ -145,7 +145,6 @@ fn init_player_animations(
 	mut commands:Commands,
 	animations: Res<PlayerAnimations>,
 ){
-	//info!("player spawned");
 	for descendant in children_query.iter_descendants(event.entity) {
 		if let Ok(mut anim_player) = anim_player_query.get_mut(descendant) {
 			//info!("Foundanimation player");
@@ -168,6 +167,15 @@ pub struct Movement{
 	pub direction:Vec2,
 	target_angle:f32,
 }
+
+impl Movement{
+	pub fn velocity(&self)->Vec3{
+		let vel_2d = self.direction * PLAYER_SPEED;
+		Vec3::new(vel_2d.x, 0.0, vel_2d.y)
+	}
+
+}
+
 
 #[derive(Component)]
 pub struct ActiveMarker;

@@ -9,6 +9,7 @@ mod game_schedule;
 mod game_camera;
 mod collisions;
 mod colliders;
+mod tests;
 use std::f32::consts::PI;
 
 use bevy::{color::palettes::css::WHITE, core_pipeline::tonemapping::Tonemapping, light::{ CascadeShadowConfigBuilder, DirectionalLightShadowMap}, prelude::*};

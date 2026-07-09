@@ -3,11 +3,11 @@ use std::f32::consts::PI;
 use bevy::{math::VectorSpace, prelude::*};
 
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, colliders::CollisionCylinder, collisions::{ HitResult, SphereCast}, game_schedule::GameSchedule, game_state::GameState, player::Player};
+use crate::{assets::AssetLoadState, colliders::CollisionCylinder, collisions::{ HitResult, SphereCast}, game_schedule::GameSchedule, game_state::GameState, player::{Movement, Player}};
 
 
 const BALL_SCALE: f32 = 0.5;
-const BALL_RADIUS:f32 = 0.5* BALL_SCALE;
+const BALL_RADIUS:f32 = 0.25 * BALL_SCALE;
 const GRAVITY:f32 = 9.8;
 const BALL_COEFFECIENT_OF_RESTITUTION:f32 = 0.75;
 const MIN_BOUNCE_SPEED:f32 = 0.8;
@@ -56,7 +56,7 @@ fn spawn_ball(
 		Ball,
 		WorldAssetRoot(ball_assets.ball_scene.clone()),
 		//Transform::from_translation(Vec3::new(0., BALL_GROUND_LEVEL ,0.)).with_scale(Vec3::splat(BALL_SCALE)),
-		Transform::from_translation(Vec3::new(-30., 10. ,0.)).with_scale(Vec3::splat(BALL_SCALE)),
+		Transform::from_translation(Vec3::new(-30., 10. ,0.1)).with_scale(Vec3::splat(BALL_SCALE)),
 		BallMotion{ 
 			velocity: Vec3 { x: 5., y: 0., z: 0. },
 			..default()
@@ -67,45 +67,51 @@ fn spawn_ball(
 fn move_ball(
 	ball:Single<(&mut BallMotion, &mut Transform)>,
 	players:Query<(&GlobalTransform,&CollisionCylinder, Entity), With<Player>>,
+	player_velocity:Query<&Movement>,
 	time:Res<Time>,
 ){
 	let (mut motion, mut transform) = ball.into_inner();
-
-
 	let speed = motion.velocity.length();
 	if speed >f32::EPSILON {
 		let sphere_cast = SphereCast{ origin: transform.translation, direction: Dir3::new_unchecked( motion.velocity / speed), radius: BALL_RADIUS, distance: speed };
 
 		let mut closest:Option<HitResult> = None;
+		let mut player_position:Option<Vec3> = None;
 		for (player_transform, collision_cylinder, entity) in players{
-
 			if let Some(hit) = sphere_cast.interset_sphere_vertical_cylinder(player_transform.translation(), collision_cylinder.radius, collision_cylinder.height, entity){
 				match closest {
 					Some(last) => if hit.distance < last.distance { 
 						closest = Some(hit);
+						player_position = Some(player_transform.translation());
 					}
-					None=> closest =Some(hit)
+					None=> {
+						closest =Some(hit);
+						player_position = Some(player_transform.translation());
+					}
 				}
 			}
 		}
 
+		if let Some(hit) = closest{
+			let player_velocity = if let Ok(player_movement) = player_velocity.get(hit.entity){
+				player_movement.velocity()
+			}else{ 
+				Vec3::ZERO 
+			};
+			info!("Player hit {} player position: {} hit position: {}", hit.entity, player_position.unwrap(), hit.position);
+			//transform.translation = hit.position;
+			motion.velocity =  motion.velocity.reflect(*hit.normal) + player_velocity;
+		}
 
-		match closest{
-			Some(hit)=> {
-				transform.translation = hit.position;
-				motion.velocity = hit.normal * speed;
-			}
-			None => 		transform.translation += motion.velocity * time.delta_secs()
+		transform.translation += motion.velocity * time.delta_secs();
+
+		//info!("ball translation:{} velocity:{}", transform.translation, motion.velocity);
+		//rotate it!
+		if let Some(axis) = motion.roll_axis{
+			transform.rotate_axis(axis, -motion.roll_speed * time.delta_secs());
 		}
 	}
 
-
-
-	//info!("ball translation:{} velocity:{}", transform.translation, motion.velocity);
-	//rotate it!
-	if let Some(axis) = motion.roll_axis{
-		transform.rotate_axis(axis, -motion.roll_speed * time.delta_secs());
-	}
 	//ball in the air, apply gravity!
 	if transform.translation.y > BALL_RADIUS{
 		let force = AIR_DAMPING * motion.velocity.length_squared();
