@@ -78,14 +78,18 @@ impl SphereCast{
 			return None;
 		}
 
- 		let t = -b - h.sqrt();
+		let h_sqrt = h.sqrt();
+ 		let mut t = -b -h_sqrt;
+		if t < 0.0 {
+			t = -b + h_sqrt; // Try the second root if ray started inside the footprint
+		}
+		/*
 		if t < 0.0{
 			return None;
-
 		}
-
+ */
 		let distance = t *(1./ray_len_2d);
-		if distance < self.distance{
+		if distance > 0. && distance < self.distance{
 			let collison_3d = self.direction * t * (1./ray_len_2d);
 			let collision_position = collison_3d + self.origin;
 
