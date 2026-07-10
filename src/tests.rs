@@ -16,16 +16,16 @@ mod tests {
     }
 
 
-/*
+
     #[test]
-    fn test_intersect_hit() {
+    fn odd_real_case() {
         // A sphere cast starting at (0, 0, 0) moving straight along the X axis
-        let cast = setup_cast(Vec3::ZERO, Vec3::X, 1.0, 20.0);
+        let cast = setup_cast(Vec3::new(-16.543943, 0.7553604, -2.5560455), Vec3::new(-0.8203597, 0.15396476, -0.5507311), 0.125, 0.019819815);
         
-        // Target cylinder placed 10 units away on the X axis, height matching the ray
-        let target_pos = Vec3::new(1.5, -1.0, 0.); // y=-1 to y=1 spans the ray at y=0
-        let target_radius = 1.0;
-        let target_height = 2.0;
+        
+        let target_pos = Vec3::new(-13.172179, 0., -0.7266768); // y=-1 to y=1 spans the ray at y=0
+        let target_radius = 0.5;
+        let target_height = 1.8;
         let target_entity = Entity::from_raw_u32(1).unwrap();
 
         let result = cast.interset_sphere_vertical_cylinder(
@@ -35,13 +35,9 @@ mod tests {
             target_entity,
         );
 
-        assert!(result.is_some(), "The ray should hit the cylinder footprint.");
-        let hit = result.unwrap();
-  
-        // Normal should point directly back along the negative X axis
-        assert!((*hit.normal - Vec3::NEG_X).length() < 1e-4, "Normal should face NEG_X");
+        assert!(result.is_none(), "The ray should not hit the cylinder footprint.");
+				
     }
- */
 
 
 

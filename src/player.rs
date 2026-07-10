@@ -1,6 +1,6 @@
 use std::{f32::consts::PI, time::Duration};
 
-use bevy::{animation::AnimationTargetId, gltf::GltfMesh, light::NotShadowCaster, math::VectorSpace, mesh::skinning::Influence, prelude::*, world_serialization::WorldInstanceReady};
+use bevy::{gltf::GltfMesh, light::NotShadowCaster, prelude::*, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
 use crate::{assets::AssetLoadState, ball::BallMotion, colliders::CollisionCylinder, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative};
 
@@ -8,7 +8,7 @@ const PLAYER_SPEED: f32 = 10.;
 const PLAYER_INFLUENCE:f32 = 1.5;
 const PLAYER_DRIBBLE_CENTRE:f32 = 0.5;
 
-const PLAYER_COLLISION_RADIUS:f32 = 0.25;
+const PLAYER_COLLISION_RADIUS:f32 = 0.5;
 const PLAYER_HEIGHT:f32 = 1.8;
 
 
@@ -35,8 +35,8 @@ impl Plugin for PlayerPlugin{
 
 #[derive(Resource)]
 struct PlayerAnimations {
-    animations: Vec<AnimationNodeIndex>,
-    graph_handle: Handle<AnimationGraph>,
+	animations: Vec<AnimationNodeIndex>,
+	graph_handle: Handle<AnimationGraph>,
 		//scene: Handle<WorldAsset>,
 }  
 

@@ -79,6 +79,11 @@ impl SphereCast{
 		}
 
  		let t = -b - h.sqrt();
+		if t < 0.0{
+			return None;
+
+		}
+
 		let distance = t *(1./ray_len_2d);
 		if distance < self.distance{
 			let collison_3d = self.direction * t * (1./ray_len_2d);

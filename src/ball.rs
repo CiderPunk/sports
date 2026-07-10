@@ -3,7 +3,7 @@ use std::f32::consts::PI;
 use bevy::{math::VectorSpace, prelude::*};
 
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, colliders::CollisionCylinder, collisions::{ HitResult, SphereCast}, game_schedule::GameSchedule, game_state::GameState, player::{Movement, Player}};
+use crate::{assets::AssetLoadState, colliders::CollisionCylinder, collisions::{ HitResult, SphereCast}, game_gizmos::GizmoSpawnMessage, game_schedule::GameSchedule, game_state::GameState, player::{Movement, Player}};
 
 
 const BALL_SCALE: f32 = 0.5;
@@ -56,7 +56,7 @@ fn spawn_ball(
 		Ball,
 		WorldAssetRoot(ball_assets.ball_scene.clone()),
 		//Transform::from_translation(Vec3::new(0., BALL_GROUND_LEVEL ,0.)).with_scale(Vec3::splat(BALL_SCALE)),
-		Transform::from_translation(Vec3::new(-30., 10. ,0.1)).with_scale(Vec3::splat(BALL_SCALE)),
+		Transform::from_translation(Vec3::new(-30., 10. ,0.)).with_scale(Vec3::splat(BALL_SCALE)),
 		BallMotion{ 
 			velocity: Vec3 { x: 5., y: 0., z: 0. },
 			..default()
@@ -65,28 +65,29 @@ fn spawn_ball(
 }
 
 fn move_ball(
-	ball:Single<(&mut BallMotion, &mut Transform)>,
-	players:Query<(&GlobalTransform,&CollisionCylinder, Entity), With<Player>>,
+	ball:Single<(&mut BallMotion, &mut Transform), Without<Player>>,
+	players:Query<(&Transform,&CollisionCylinder, Entity), With<Player>>,
 	player_velocity:Query<&Movement>,
 	time:Res<Time>,
+	mut gizmo_writer:MessageWriter<GizmoSpawnMessage>,
 ){
 	let (mut motion, mut transform) = ball.into_inner();
 	let speed = motion.velocity.length();
 	if speed >f32::EPSILON {
-		let sphere_cast = SphereCast{ origin: transform.translation, direction: Dir3::new_unchecked( motion.velocity / speed), radius: BALL_RADIUS, distance: speed };
+		let sphere_cast = SphereCast{ origin: transform.translation, direction: Dir3::new_unchecked( motion.velocity / speed), radius: BALL_RADIUS, distance: speed * time.delta_secs() };
 
 		let mut closest:Option<HitResult> = None;
 		let mut player_position:Option<Vec3> = None;
 		for (player_transform, collision_cylinder, entity) in players{
-			if let Some(hit) = sphere_cast.interset_sphere_vertical_cylinder(player_transform.translation(), collision_cylinder.radius, collision_cylinder.height, entity){
+			if let Some(hit) = sphere_cast.interset_sphere_vertical_cylinder(player_transform.translation, collision_cylinder.radius, collision_cylinder.height, entity){
 				match closest {
 					Some(last) => if hit.distance < last.distance { 
 						closest = Some(hit);
-						player_position = Some(player_transform.translation());
+					player_position = Some(player_transform.translation);
 					}
 					None=> {
 						closest =Some(hit);
-						player_position = Some(player_transform.translation());
+						player_position = Some(player_transform.translation);
 					}
 				}
 			}
@@ -99,11 +100,18 @@ fn move_ball(
 				Vec3::ZERO 
 			};
 			info!("Player hit {} player position: {} hit position: {}", hit.entity, player_position.unwrap(), hit.position);
-			//transform.translation = hit.position;
+			info!("Sphere cast; origin: {}, direction:{}, radius:{}, distance:{}", sphere_cast.origin, sphere_cast.direction, sphere_cast.radius, sphere_cast.distance);
+			
+			gizmo_writer.write(GizmoSpawnMessage::new(transform.clone(), crate::game_gizmos::GizmoColour::White));
+			gizmo_writer.write(GizmoSpawnMessage::new(Transform::from_translation(hit.position), crate::game_gizmos::GizmoColour::Pink));
+			transform.translation = hit.position;
 			motion.velocity =  motion.velocity.reflect(*hit.normal) + player_velocity;
 		}
+		else{
+			transform.translation += motion.velocity * time.delta_secs();
+		}
 
-		transform.translation += motion.velocity * time.delta_secs();
+		
 
 		//info!("ball translation:{} velocity:{}", transform.translation, motion.velocity);
 		//rotate it!

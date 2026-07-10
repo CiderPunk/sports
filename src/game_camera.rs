@@ -5,7 +5,8 @@ use bevy::{core_pipeline::tonemapping::Tonemapping, prelude::*};
 use crate::ball::Ball;
 
 
-const CAMERA_OFFSET:Vec3 = Vec3::new(0.,140.,120.);
+//const CAMERA_OFFSET:Vec3 = Vec3::new(0.,140.,120.);
+const CAMERA_OFFSET:Vec3 = Vec3::new(0.,80.,60.);
 
 pub struct GameCameraPlugin;
 impl Plugin for GameCameraPlugin{
@@ -42,7 +43,7 @@ fn spawn_camera(
 		}),
     Tonemapping::BlenderFilmic,
 		//best!
-		Transform::from_translation(Vec3::new(0.,140.,120.)).looking_at(Vec3::ZERO, Vec3::Y),
+		Transform::from_translation(CAMERA_OFFSET).looking_at(Vec3::ZERO, Vec3::Y),
 	));
 }
 
