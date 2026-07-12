@@ -20,7 +20,6 @@ pub struct HitResult{
 
 impl SphereCast{
 
-	/*
 	pub fn intersects_sphere(
 		&self,
 		target_position:Vec3, 
@@ -47,10 +46,11 @@ impl SphereCast{
 				distance: t, 
 				position: hit_position, 
 				entity: target_entity,
+				normal:Dir3::new_unchecked(normal),
 			})
 		} else{ None }
 	}
- */
+
 
 	pub fn interset_sphere_vertical_cylinder(
 		&self, 
@@ -83,11 +83,7 @@ impl SphereCast{
 		if t < 0.0 {
 			t = -b + h_sqrt; // Try the second root if ray started inside the footprint
 		}
-		/*
-		if t < 0.0{
-			return None;
-		}
- */
+
 		let distance = t *(1./ray_len_2d);
 		if distance > 0. && distance < self.distance{
 			let collison_3d = self.direction * t * (1./ray_len_2d);
@@ -95,16 +91,30 @@ impl SphereCast{
 
 			if collision_position.y > target_position.y 
 			 	&& collision_position.y < target_position.y + target_height{
+				if distance < combined_radius { 
+					let normal = (target_position - self.origin).normalize_or(Vec3::X);
+					return Some(HitResult{
+						distance:0.,
+						position:self.origin + (normal * combined_radius),
+						entity, 
+						normal:Dir3::new_unchecked(normal),
+					});
+				} else { 
+					let normal_2d_raw = collision_position.xz() - target_position_2d;
+					//FIXME: this could be less than combined radius
+					let normal_2d = normal_2d_raw / combined_radius;
+					let normal = Dir3::from_xyz(normal_2d.x, 0., normal_2d.y).unwrap_or(Dir3::X);
+					return Some(HitResult{
+						distance,
+						position:collision_position,
+						entity, 
+						normal,
+					});
 
-				let normal_2d_raw = collision_position.xz() - target_position_2d;
-				let normal_2d = normal_2d_raw / combined_radius;
+				 };
 
-				return Some(HitResult{
-					distance,
-					position:collision_position,
-					entity, 
-					normal:Dir3::from_xyz(normal_2d.x, 0., normal_2d.y).unwrap_or(Dir3::X),
-				});
+
+		
 			}
 		
 		}

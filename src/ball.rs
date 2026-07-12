@@ -83,7 +83,7 @@ fn move_ball(
 				match closest {
 					Some(last) => if hit.distance < last.distance { 
 						closest = Some(hit);
-					player_position = Some(player_transform.translation);
+						player_position = Some(player_transform.translation);
 					}
 					None=> {
 						closest =Some(hit);
@@ -104,8 +104,9 @@ fn move_ball(
 			
 			gizmo_writer.write(GizmoSpawnMessage::new(transform.clone(), crate::game_gizmos::GizmoColour::White));
 			gizmo_writer.write(GizmoSpawnMessage::new(Transform::from_translation(hit.position), crate::game_gizmos::GizmoColour::Pink));
+
 			transform.translation = hit.position;
-			motion.velocity =  motion.velocity.reflect(*hit.normal) + player_velocity;
+			motion.velocity =  motion.velocity.reflect(*hit.normal);// + player_velocity;
 		}
 		else{
 			transform.translation += motion.velocity * time.delta_secs();
