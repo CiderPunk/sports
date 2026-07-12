@@ -79,7 +79,7 @@ fn move_ball(
 		let mut closest:Option<HitResult> = None;
 		let mut player_position:Option<Vec3> = None;
 		for (player_transform, collision_cylinder, entity) in players{
-			if let Some(hit) = sphere_cast.interset_sphere_vertical_cylinder(player_transform.translation, collision_cylinder.radius, collision_cylinder.height, entity){
+			if let Some(hit) = sphere_cast.interset_vertical_cylinder(player_transform.translation, collision_cylinder.radius, collision_cylinder.height, entity){
 				match closest {
 					Some(last) => if hit.distance < last.distance { 
 						closest = Some(hit);

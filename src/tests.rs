@@ -28,7 +28,7 @@ mod tests {
         let target_height = 1.8;
         let target_entity = Entity::from_raw_u32(1).unwrap();
 
-        let result = cast.interset_sphere_vertical_cylinder(
+        let result = cast.interset_vertical_cylinder(
             target_pos,
             target_radius,
             target_height,
@@ -52,7 +52,7 @@ mod tests {
         let target_height = 2.0;
         let target_entity = Entity::from_raw_u32(1).unwrap();
 
-        let result = cast.interset_sphere_vertical_cylinder(
+        let result = cast.interset_vertical_cylinder(
             target_pos,
             target_radius,
             target_height,
@@ -83,7 +83,7 @@ mod tests {
         let target_radius = 1.0;
         let target_height = 10.0;
 
-        let result = cast.interset_sphere_vertical_cylinder(
+        let result = cast.interset_vertical_cylinder(
             target_pos,
             target_radius,
             target_height,
@@ -111,7 +111,7 @@ mod tests {
         let target_radius = 1.0;
         let target_height = 4.0;
 
-        let result = cast.interset_sphere_vertical_cylinder(
+        let result = cast.interset_vertical_cylinder(
             target_pos,
             target_radius,
             target_height,
@@ -130,7 +130,7 @@ mod tests {
         let target_radius = 0.5;
         let target_height = 2.0;
 
-        let result = cast.interset_sphere_vertical_cylinder(
+        let result = cast.interset_vertical_cylinder(
             target_pos,
             target_radius,
             target_height,
@@ -149,7 +149,7 @@ mod tests {
         let target_radius = 1.0;
         let target_height = 2.0;
 
-        let result = cast.interset_sphere_vertical_cylinder(
+        let result = cast.interset_vertical_cylinder(
             target_pos,
             target_radius,
             target_height,

@@ -16,9 +16,42 @@ pub struct HitResult{
 	pub normal:Dir3,
 }
 
+pub struct InclusionResult{
+	correction:Vec3,
+}
 
 
 impl SphereCast{
+
+	pub fn cylinder_candidate_filter(&self, target_position:Vec3, target_radius:f32) -> bool{
+		let mid_point = (self.origin + (self.direction * (self.distance * 0.5))).xz();
+		let test_radius = target_radius + self.radius + (self.distance * 0.5);
+		(mid_point - target_position.xz()).length_squared() <= test_radius * test_radius
+	}
+
+	// cylinder inclusion checks for cylinders that have moved into 
+	pub fn inclusion_vertical_cylinder(
+		&self, 
+		target_position:Vec3,
+		target_radius:f32,
+	 	target_height:f32,
+	)->Option<InclusionResult>{
+		let combined_radius = target_radius + self.radius;
+		let target_offset_2d = target_position.xz() - self.origin.xz();
+		if target_offset_2d.length_squared() < combined_radius * combined_radius
+			&& self.origin.y > target_position.y 
+			&& self.origin.y < (target_position.y + target_height)
+		{
+			let distance = target_offset_2d.length();
+			let normal = if distance > f32::EPSILON { target_offset_2d / distance } else { Vec2::X };
+			let correction_2d = combined_radius - distance * normal;
+			Some(InclusionResult{ correction:Vec3::new(correction_2d.x, 0., correction_2d.y)})
+		}
+		else{
+			None
+		}
+	}
+	
 
 	pub fn intersects_sphere(
 		&self,
@@ -52,7 +85,7 @@ impl SphereCast{
 	}
 
 
-	pub fn interset_sphere_vertical_cylinder(
+	pub fn interset_vertical_cylinder(
 		&self, 
 		target_position:Vec3, 
 		target_radius:f32, 
