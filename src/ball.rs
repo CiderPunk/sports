@@ -140,10 +140,10 @@ fn update_ball(
 				};
 
 				//debugging
-				info!("Player hit {} player position: {} hit position: {}", hit.entity, hit.other_origion, hit.position);
-				info!("Sphere cast; origin: {}, direction:{}, radius:{}, distance:{}", sphere_cast.origin, sphere_cast.direction, sphere_cast.radius, sphere_cast.distance);
-				gizmo_writer.write(GizmoSpawnMessage::new(transform.clone(), crate::game_gizmos::GizmoColour::White));
-				gizmo_writer.write(GizmoSpawnMessage::new(Transform::from_translation(hit.position), crate::game_gizmos::GizmoColour::Pink));
+				//info!("Player hit {} player position: {} hit position: {}", hit.entity, hit.other_origion, hit.position);
+				//info!("Sphere cast; origin: {}, direction:{}, radius:{}, distance:{}", sphere_cast.origin, sphere_cast.direction, sphere_cast.radius, sphere_cast.distance);
+				//gizmo_writer.write(GizmoSpawnMessage::new(transform.clone(), crate::game_gizmos::GizmoColour::White));
+				//gizmo_writer.write(GizmoSpawnMessage::new(Transform::from_translation(hit.position), crate::game_gizmos::GizmoColour::Pink));
 				//end debugging
 
 				transform.translation = hit.position;		

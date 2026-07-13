@@ -10,7 +10,7 @@ impl Plugin for GameGizmosPlugin{
 		app
 			.add_message::<GizmoSpawnMessage>()
 			.add_systems(Startup, init_gizmos)
-			.add_systems(Update, spawn_gizmos)
+			//.add_systems(Update, (spawn_gizmos, despawn_gizmos).chain())
 			;
 	}
 }
@@ -59,6 +59,7 @@ impl GizmoSpawnMessage{
 #[derive(Resource)]
 struct GameGizmos{
 	cross_colours:HashMap<GizmoColour, Handle<GizmoAsset>>,
+	ttl:Timer,
 }
 
 
@@ -74,7 +75,7 @@ fn init_gizmos(
 		cross_colours.insert(colour.clone(), gizmo_assets.add(cross));
 	}
 
-	commands.insert_resource(GameGizmos{ cross_colours });
+	commands.insert_resource(GameGizmos{ cross_colours, ttl:Timer::from_seconds(5., TimerMode::Once) });
 	spawn_writer.write(GizmoSpawnMessage::new(Transform::from_xyz(0.,0.,0.), GizmoColour::Blue));
 }
 
@@ -84,15 +85,27 @@ fn spawn_gizmos(
 	game_gizmos:Res<GameGizmos>,
 ){
 	for spawn_message in spawn_reader.read(){
-
 		let colour_handle = game_gizmos.cross_colours.get(&spawn_message.colour).expect("Missing colour gizmo");
 		commands.spawn((
 			Gizmo{
 				handle:colour_handle.clone(),
-
 				..default()
 			},
 			spawn_message.transform,
 		));
+	}
+}
+
+
+fn despawn_gizmos(
+	query:Query<(&mut GameGizmos, Entity)>,
+	mut commands:Commands,
+	time:Res<Time>,
+){
+	for (mut gizmo, entity) in query{
+		gizmo.ttl.tick(time.delta());
+		if gizmo.ttl.is_finished(){
+			commands.entity(entity).despawn();
+		}
 	}
 }
