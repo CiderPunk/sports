@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use bevy::{math::VectorSpace, prelude::*};
+use bevy::{log::tracing_subscriber::filter::filter_fn, math::VectorSpace, prelude::*};
 
 use bevy_asset_loader::prelude::*;
 use crate::{assets::AssetLoadState, colliders::CollisionCylinder, collisions::{ HitResult, SphereCast}, game_gizmos::GizmoSpawnMessage, game_schedule::GameSchedule, game_state::GameState, player::{Movement, Player}};
@@ -73,13 +73,26 @@ fn move_ball(
 ){
 	let (mut motion, mut transform) = ball.into_inner();
 	let speed = motion.velocity.length();
-	if speed >f32::EPSILON {
-		let sphere_cast = SphereCast{ origin: transform.translation, direction: Dir3::new_unchecked( motion.velocity / speed), radius: BALL_RADIUS, distance: speed * time.delta_secs() };
+	let sphere_cast = SphereCast{ origin: transform.translation, direction: Dir3::new_unchecked( motion.velocity / speed), radius: BALL_RADIUS, distance: speed * time.delta_secs() };
+	let candidates:Vec<_> = players.iter().filter(|(player_transform, collision, _entity)|  sphere_cast.cylinder_candidate_filter(player_transform.translation, collision.radius) ).collect();
+	
+	for i in 0 .. 3{
+		let mut moved = false;
+		for ((player_transform, player_collision, entity)) in candidates.iter(){
+			if let Some(inclusion_result) = sphere_cast.inclusion_vertical_cylinder(player_transform.translation, player_collision.radius, player_collision.height){
+				transform.translation += inclusion_result.correction;
+				moved = true;
+			};
+		}
+		if !moved { break; }
+	}
+
+	if speed > f32::EPSILON{
 
 		let mut closest:Option<HitResult> = None;
 		let mut player_position:Option<Vec3> = None;
-		for (player_transform, collision_cylinder, entity) in players{
-			if let Some(hit) = sphere_cast.interset_vertical_cylinder(player_transform.translation, collision_cylinder.radius, collision_cylinder.height, entity){
+		for (player_transform, collision_cylinder, entity) in candidates.iter(){
+			if let Some(hit) = sphere_cast.intersect_vertical_cylinder(player_transform.translation, collision_cylinder.radius, collision_cylinder.height, *entity){
 				match closest {
 					Some(last) => if hit.distance < last.distance { 
 						closest = Some(hit);
@@ -106,7 +119,7 @@ fn move_ball(
 			gizmo_writer.write(GizmoSpawnMessage::new(Transform::from_translation(hit.position), crate::game_gizmos::GizmoColour::Pink));
 
 			transform.translation = hit.position;
-			motion.velocity =  motion.velocity.reflect(*hit.normal);// + player_velocity;
+			motion.velocity =  motion.velocity.reflect(*hit.normal) + player_velocity;
 		}
 		else{
 			transform.translation += motion.velocity * time.delta_secs();

@@ -17,7 +17,7 @@ pub struct HitResult{
 }
 
 pub struct InclusionResult{
-	correction:Vec3,
+	pub correction:Vec3,
 }
 
 
@@ -37,14 +37,14 @@ impl SphereCast{
 	 	target_height:f32,
 	)->Option<InclusionResult>{
 		let combined_radius = target_radius + self.radius;
-		let target_offset_2d = target_position.xz() - self.origin.xz();
+		let target_offset_2d = self.origin.xz() - target_position.xz();
 		if target_offset_2d.length_squared() < combined_radius * combined_radius
 			&& self.origin.y > target_position.y 
 			&& self.origin.y < (target_position.y + target_height)
 		{
 			let distance = target_offset_2d.length();
 			let normal = if distance > f32::EPSILON { target_offset_2d / distance } else { Vec2::X };
-			let correction_2d = combined_radius - distance * normal;
+			let correction_2d = (combined_radius - distance) * normal;
 			Some(InclusionResult{ correction:Vec3::new(correction_2d.x, 0., correction_2d.y)})
 		}
 		else{
@@ -85,7 +85,7 @@ impl SphereCast{
 	}
 
 
-	pub fn interset_vertical_cylinder(
+	pub fn intersect_vertical_cylinder(
 		&self, 
 		target_position:Vec3, 
 		target_radius:f32, 
@@ -124,15 +124,7 @@ impl SphereCast{
 
 			if collision_position.y > target_position.y 
 			 	&& collision_position.y < target_position.y + target_height{
-				if distance < combined_radius { 
-					let normal = (target_position - self.origin).normalize_or(Vec3::X);
-					return Some(HitResult{
-						distance:0.,
-						position:self.origin + (normal * combined_radius),
-						entity, 
-						normal:Dir3::new_unchecked(normal),
-					});
-				} else { 
+			
 					let normal_2d_raw = collision_position.xz() - target_position_2d;
 					//FIXME: this could be less than combined radius
 					let normal_2d = normal_2d_raw / combined_radius;
@@ -143,15 +135,8 @@ impl SphereCast{
 						entity, 
 						normal,
 					});
-
-				 };
-
-
-		
-			}
-		
-		}
-		None				
-
+				 }
+			}	
+		None
 	}
 }
