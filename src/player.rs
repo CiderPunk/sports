@@ -237,23 +237,3 @@ fn move_player(
 	}
 }
 
-
-fn dribble(
-	players:Query<(&Transform, &Movement), With<ActivePlayer>>,
-	ball:Single<(&Transform, &mut BallMotion)>,
-	time:Res<Time>,
-){
-	let (ball_transform, mut ball_motion) = ball.into_inner();
-	let ball_translation = ball_transform.translation;
-	for (transform, player_movement) in players{
-		let forward = transform.forward();
-		let distance = (((forward * PLAYER_DRIBBLE_CENTRE) + transform.translation) - ball_translation).length();
-		let influence= (PLAYER_INFLUENCE / distance).clamp(0., 1.);
-		if influence > 0.5{
-			info!("influence {} ", influence);
-			let player_vel = player_movement.direction * PLAYER_SPEED;
-			let diff = ball_motion.velocity - Vec3::new(player_vel.x, 0., -player_vel.y) ;
-			ball_motion.velocity -= diff * influence * time.delta_secs();
-		}
-	}
-}

@@ -14,6 +14,7 @@ pub struct HitResult{
 	pub position: Vec3,
 	pub entity:Entity,
 	pub normal:Dir3,
+	pub other_origion:Vec3,
 }
 
 pub struct InclusionResult{
@@ -80,6 +81,7 @@ impl SphereCast{
 				position: hit_position, 
 				entity: target_entity,
 				normal:Dir3::new_unchecked(normal),
+				other_origion: target_position,
 			})
 		} else{ None }
 	}
@@ -134,6 +136,7 @@ impl SphereCast{
 						position:collision_position,
 						entity, 
 						normal,
+						other_origion: target_position,
 					});
 				 }
 			}	
