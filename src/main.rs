@@ -9,13 +9,15 @@ mod game_schedule;
 mod game_camera;
 mod collisions;
 mod colliders;
+mod tests;
+mod game_gizmos;
 use std::f32::consts::PI;
 
 use bevy::{color::palettes::css::WHITE, core_pipeline::tonemapping::Tonemapping, light::{ CascadeShadowConfigBuilder, DirectionalLightShadowMap}, prelude::*};
 use bevy_enhanced_input::EnhancedInputPlugin;
 use bevy_prng::WyRand;
 use bevy_rand::plugin::EntropyPlugin;
-use crate::{assets::AssetsPlugin, ball::BallPlugin, game_camera::GameCameraPlugin, game_control::GameControlPlugin, game_schedule::GameSchedulePlugin, game_state::GameStatePlugin, pitch::PitchPlugin, player::PlayerPlugin};
+use crate::{assets::AssetsPlugin, ball::BallPlugin, game_camera::GameCameraPlugin, game_control::GameControlPlugin, game_gizmos::GameGizmosPlugin, game_schedule::GameSchedulePlugin, game_state::GameStatePlugin, pitch::PitchPlugin, player::PlayerPlugin};
 
 const APP_NAME: &str = "Sportsball";
 fn main() {
@@ -44,6 +46,7 @@ fn main() {
 			BallPlugin,
 			PitchPlugin,
 			GameControlPlugin,
+			GameGizmosPlugin,
 		))
 		.insert_resource(ClearColor(Color::srgb(0., 0., 0.)))
     .insert_resource(GlobalAmbientLight {

@@ -1,6 +1,6 @@
 use std::{f32::consts::PI, time::Duration};
 
-use bevy::{animation::AnimationTargetId, gltf::GltfMesh, light::NotShadowCaster, math::VectorSpace, mesh::skinning::Influence, prelude::*, world_serialization::WorldInstanceReady};
+use bevy::{gltf::GltfMesh, light::NotShadowCaster, prelude::*, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
 use crate::{assets::AssetLoadState, ball::BallMotion, colliders::CollisionCylinder, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative};
 
@@ -35,8 +35,8 @@ impl Plugin for PlayerPlugin{
 
 #[derive(Resource)]
 struct PlayerAnimations {
-    animations: Vec<AnimationNodeIndex>,
-    graph_handle: Handle<AnimationGraph>,
+	animations: Vec<AnimationNodeIndex>,
+	graph_handle: Handle<AnimationGraph>,
 		//scene: Handle<WorldAsset>,
 }  
 
@@ -110,7 +110,7 @@ fn spawn_players(
 	mut commands: Commands,
 	player_assets: Res<PlayerAssets>,
 ){
-	for i in 0 .. 11{
+	for i in 0 .. 1{
 		let id = commands.spawn((
 			Player,
 			MeshMaterial3d(player_assets.player_material1.clone()),
@@ -145,7 +145,6 @@ fn init_player_animations(
 	mut commands:Commands,
 	animations: Res<PlayerAnimations>,
 ){
-	//info!("player spawned");
 	for descendant in children_query.iter_descendants(event.entity) {
 		if let Ok(mut anim_player) = anim_player_query.get_mut(descendant) {
 			//info!("Foundanimation player");
@@ -168,6 +167,15 @@ pub struct Movement{
 	pub direction:Vec2,
 	target_angle:f32,
 }
+
+impl Movement{
+	pub fn velocity(&self)->Vec3{
+		let vel_2d = self.direction * PLAYER_SPEED;
+		Vec3::new(vel_2d.x, 0.0, vel_2d.y)
+	}
+
+}
+
 
 #[derive(Component)]
 pub struct ActiveMarker;
@@ -229,23 +237,3 @@ fn move_player(
 	}
 }
 
-
-fn dribble(
-	players:Query<(&Transform, &Movement), With<ActivePlayer>>,
-	ball:Single<(&Transform, &mut BallMotion)>,
-	time:Res<Time>,
-){
-	let (ball_transform, mut ball_motion) = ball.into_inner();
-	let ball_translation = ball_transform.translation;
-	for (transform, player_movement) in players{
-		let forward = transform.forward();
-		let distance = (((forward * PLAYER_DRIBBLE_CENTRE) + transform.translation) - ball_translation).length();
-		let influence= (PLAYER_INFLUENCE / distance).clamp(0., 1.);
-		if influence > 0.5{
-			info!("influence {} ", influence);
-			let player_vel = player_movement.direction * PLAYER_SPEED;
-			let diff = ball_motion.velocity - Vec3::new(player_vel.x, 0., -player_vel.y) ;
-			ball_motion.velocity -= diff * influence * time.delta_secs();
-		}
-	}
-}

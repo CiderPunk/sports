@@ -14,13 +14,46 @@ pub struct HitResult{
 	pub position: Vec3,
 	pub entity:Entity,
 	pub normal:Dir3,
+	pub other_origion:Vec3,
 }
 
+pub struct InclusionResult{
+	pub correction:Vec3,
+}
 
 
 impl SphereCast{
 
-	/*
+	pub fn cylinder_candidate_filter(&self, target_position:Vec3, target_radius:f32) -> bool{
+		let mid_point = (self.origin + (self.direction * (self.distance * 0.5))).xz();
+		let test_radius = target_radius + self.radius + (self.distance * 0.5);
+		(mid_point - target_position.xz()).length_squared() <= test_radius * test_radius
+	}
+
+	// cylinder inclusion checks for cylinders that have moved into 
+	pub fn inclusion_vertical_cylinder(
+		&self, 
+		target_position:Vec3,
+		target_radius:f32,
+	 	target_height:f32,
+	)->Option<InclusionResult>{
+		let combined_radius = target_radius + self.radius;
+		let target_offset_2d = self.origin.xz() - target_position.xz();
+		if target_offset_2d.length_squared() < combined_radius * combined_radius
+			&& self.origin.y > target_position.y 
+			&& self.origin.y < (target_position.y + target_height)
+		{
+			let distance = target_offset_2d.length();
+			let normal = if distance > f32::EPSILON { target_offset_2d / distance } else { Vec2::X };
+			let correction_2d = (combined_radius - distance) * normal;
+			Some(InclusionResult{ correction:Vec3::new(correction_2d.x, 0., correction_2d.y)})
+		}
+		else{
+			None
+		}
+	}
+	
+
 	pub fn intersects_sphere(
 		&self,
 		target_position:Vec3, 
@@ -47,12 +80,14 @@ impl SphereCast{
 				distance: t, 
 				position: hit_position, 
 				entity: target_entity,
+				normal:Dir3::new_unchecked(normal),
+				other_origion: target_position,
 			})
 		} else{ None }
 	}
- */
 
-	pub fn interset_sphere_vertical_cylinder(
+
+	pub fn intersect_vertical_cylinder(
 		&self, 
 		target_position:Vec3, 
 		target_radius:f32, 
@@ -78,28 +113,33 @@ impl SphereCast{
 			return None;
 		}
 
- 		let t = -b - h.sqrt();
+		let h_sqrt = h.sqrt();
+ 		let mut t = -b -h_sqrt;
+		if t < 0.0 {
+			t = -b + h_sqrt; // Try the second root if ray started inside the footprint
+		}
+
 		let distance = t *(1./ray_len_2d);
-		if distance < self.distance{
+		if distance > 0. && distance < self.distance{
 			let collison_3d = self.direction * t * (1./ray_len_2d);
 			let collision_position = collison_3d + self.origin;
 
 			if collision_position.y > target_position.y 
 			 	&& collision_position.y < target_position.y + target_height{
-
-				let normal_2d_raw = collision_position.xz() - target_position_2d;
-				let normal_2d = normal_2d_raw / combined_radius;
-
-				return Some(HitResult{
-					distance,
-					position:collision_position,
-					entity, 
-					normal:Dir3::from_xyz(normal_2d.x, 0., normal_2d.y).unwrap_or(Dir3::X),
-				});
-			}
-		
-		}
-		None				
-
+			
+					let normal_2d_raw = collision_position.xz() - target_position_2d;
+					//FIXME: this could be less than combined radius
+					let normal_2d = normal_2d_raw / combined_radius;
+					let normal = Dir3::from_xyz(normal_2d.x, 0., normal_2d.y).unwrap_or(Dir3::X);
+					return Some(HitResult{
+						distance,
+						position:collision_position,
+						entity, 
+						normal,
+						other_origion: target_position,
+					});
+				 }
+			}	
+		None
 	}
 }
