@@ -156,15 +156,8 @@ fn update_ball(
 				distance = 0.;
 			}
 			motion.direction = direction;
-
-
-
 		}
-		//info!("ball translation:{} velocity:{}", transform.translation, motion.velocity);
-		//rotate it!
-		if let Some(axis) = motion.roll_axis{
-			transform.rotate_axis(axis, -motion.roll_speed * time.delta_secs());
-		}
+		
 	}
 
 	let mut velocity = speed * direction;
@@ -177,6 +170,10 @@ fn update_ball(
 		velocity += delta_v;
 	}
 	else{
+		//touched ground - update roll
+		motion.roll_axis = Dir3::new_unchecked(direction.cross(Vec3::Y).normalize());
+		motion.roll_speed = motion.speed * PI * BALL_RADIUS;
+
 		if velocity.y < -MIN_BOUNCE_SPEED {
 			//bounce!
 			info!("bounce {}", velocity.y);
@@ -193,20 +190,11 @@ fn update_ball(
 			}
 		}		
 		transform.translation.y = BALL_RADIUS;
-	} 
+	}
+	transform.rotate_axis(motion.roll_axis, -motion.roll_speed * time.delta_secs());
 	motion.direction = Dir3::new_unchecked(velocity.normalize_or(Vec3::Y));
 	motion.speed = velocity.length();
 
-		//roll speed
-/*
-		if motion.velocity.z > f32::EPSILON || motion.velocity.x > f32::EPSILON{
-			motion.roll_axis = Dir3::from_xyz(motion.velocity.z, 0., motion.velocity.x).ok();
-			motion.roll_speed = motion.velocity.xz().length() * PI * BALL_RADIUS;
-		}
-		else{
-			motion.roll_axis = None;
-		}
- */
 }
 
 
@@ -220,14 +208,14 @@ pub struct BallMotion{
 	//pub velocity:Vec3,
 	pub direction:Dir3,
 	pub speed:f32,
-	roll_axis:Option<Dir3>,
+	roll_axis:Dir3,
 	roll_speed:f32,
 }
 
 impl Default for BallMotion{
 
 	fn default()-> Self{
-		Self { direction: Dir3::Y, speed: 0., roll_axis: None, roll_speed: 0.}
+		Self { direction: Dir3::Y, speed: 0., roll_axis: Dir3::Z, roll_speed: 0.}
 	}
 }
 
