@@ -1,13 +1,12 @@
 use std::f32::consts::PI;
 
-use bevy::{log::tracing_subscriber::filter::filter_fn, math::VectorSpace, prelude::*};
-
+use bevy::{math::{FloatPow, VectorSpace}, prelude::*};
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, colliders::CollisionCylinder, collisions::{ HitResult, SphereCast}, game_gizmos::GizmoSpawnMessage, game_schedule::GameSchedule, game_state::GameState, player::{Movement, Player}};
+use crate::{assets::AssetLoadState, colliders::CollisionCylinder, collisions::{ HitResult, SphereCast}, game_gizmos::GizmoSpawnMessage, game_schedule::GameSchedule, game_state::GameState, player::{InfluenceZone, Movement, Player}};
 
 
 const BALL_SCALE: f32 = 0.5;
-const BALL_RADIUS:f32 = 0.25 * BALL_SCALE;
+pub const BALL_RADIUS:f32 = 0.25 * BALL_SCALE;
 const GRAVITY:f32 = 9.8;
 const BALL_COEFFECIENT_OF_RESTITUTION:f32 = 0.75;
 const MIN_BOUNCE_SPEED:f32 = 0.8;
@@ -35,7 +34,7 @@ impl Plugin for BallPlugin{
 				.load_collection::<BallAssets>(),
 			)
 			.add_systems(OnEnter(GameState::Playing), spawn_ball)
-			.add_systems(Update, update_ball.in_set(GameSchedule::MoveBall))
+			.add_systems(Update, (decide_influence, update_ball).chain().in_set(GameSchedule::MoveBall))
 			;
 	}
 }
@@ -65,7 +64,7 @@ fn spawn_ball(
 	));
 }
 
-fn separate_inlcusions(
+fn separate_inclusions(
 	transform:&mut Transform,
 	candidates:&Vec<(&Transform, &CollisionCylinder, Entity)>,
 ){
@@ -106,14 +105,72 @@ fn get_next_collision(
 	closest
 }
 
+#[derive(Copy, Clone)]
+enum Zone{
+	static_zone,
+	draw_zone,
+}
+
+
+#[derive(Copy, Clone)]
+struct InfluencerCandidate{
+	zone:Zone,
+	dist_squared:f32,
+	entity:Entity,
+	origin:Vec3,
+}
+
+fn decide_influence(
+	ball:Single<(&mut BallMotion, &Transform), Without<Player>>,
+	influencers:Query<(&GlobalTransform,&InfluenceZone, &ChildOf)>,
+	player_movement_query:Query<&Movement>,
+){
+	let (mut motion, ball_transform) = ball.into_inner();
+	let hits:Vec<InfluencerCandidate> = influencers.iter().filter_map(|(transform, influence, child_of)| { 
+		let translation = transform.translation();
+		let dist_squared = (translation - ball_transform.translation).length_squared();
+		if dist_squared < influence.static_radius.squared(){
+			Some(InfluencerCandidate { zone: Zone::static_zone , dist_squared, entity: child_of.0, origin: translation })
+		}
+		else if dist_squared < influence.draw_radius.squared(){
+			Some(InfluencerCandidate { zone: Zone::draw_zone , dist_squared, entity:child_of.0, origin: translation })
+		}
+		else{
+			None
+		}
+	}).collect();	
+
+	//TODO: this should consider all players with the ball in their influence
+	let mut closest = hits.first();
+	for hit in hits.iter(){
+		if hit.dist_squared < closest.unwrap().dist_squared { 
+			closest = Some(&hit); 
+		}
+	}
+
+	if let Some(closest) = closest{
+		if let Ok(player_movement) = player_movement_query.get(closest.entity){
+			let draw_velocity = match closest.zone{
+				Zone::draw_zone => ( closest.origin - ball_transform.translation).normalize_or(Vec3::ZERO),
+				Zone::static_zone => Vec3::ZERO,
+			};
+			let velocity = player_movement.velocity() + draw_velocity;
+
+
+	
+			let speed = velocity.length();
+			motion.speed = speed;
+			motion.direction = if speed > f32::EPSILON {	Dir3::new_unchecked(velocity / speed) } else { Dir3::X };
+		}
+	};
+}
 
 
 fn update_ball(
 	ball:Single<(&mut BallMotion, &mut Transform), Without<Player>>,
 	players:Query<(&Transform,&CollisionCylinder, Entity), With<Player>>,
-	player_velocity:Query<&Movement>,
 	time:Res<Time>,
-	mut gizmo_writer:MessageWriter<GizmoSpawnMessage>,
+	//mut gizmo_writer:MessageWriter<GizmoSpawnMessage>,
 ){
 	let (mut motion, mut transform) = ball.into_inner();
 	let speed = motion.speed;
@@ -125,31 +182,22 @@ fn update_ball(
 	//broad filter for local collision candidates
 	let candidates:Vec<_> = players.iter().filter(|(player_transform, collision, _entity)|  sphere_cast.cylinder_candidate_filter(player_transform.translation, collision.radius) ).collect();
 
-	separate_inlcusions(&mut transform, &candidates);
+	separate_inclusions(&mut transform, &candidates);
 
+	//collision detection
 	if speed > f32::EPSILON{
 		while distance > 0.{
-
 			let hit = get_next_collision(&transform, &direction, distance, &candidates);
-
 			if let Some(hit) = hit{
-				let player_velocity = if let Ok(player_movement) = player_velocity.get(hit.entity){
-					player_movement.velocity()
-				}else{ 
-					Vec3::ZERO 
-				};
-
 				//debugging
 				//info!("Player hit {} player position: {} hit position: {}", hit.entity, hit.other_origion, hit.position);
 				//info!("Sphere cast; origin: {}, direction:{}, radius:{}, distance:{}", sphere_cast.origin, sphere_cast.direction, sphere_cast.radius, sphere_cast.distance);
 				//gizmo_writer.write(GizmoSpawnMessage::new(transform.clone(), crate::game_gizmos::GizmoColour::White));
 				//gizmo_writer.write(GizmoSpawnMessage::new(Transform::from_translation(hit.position), crate::game_gizmos::GizmoColour::Pink));
 				//end debugging
-
 				transform.translation = hit.position;		
 				distance -= hit.distance;
 				direction = Dir3::new_unchecked( direction.reflect(*hit.normal));
-				
 			}
 			else{
 				transform.translation += *direction * distance;
@@ -157,9 +205,9 @@ fn update_ball(
 			}
 			motion.direction = direction;
 		}
-		
 	}
 
+	//update velocity
 	let mut velocity = speed * direction;
 
 	//ball in the air, apply gravity!
@@ -170,9 +218,9 @@ fn update_ball(
 		velocity += delta_v;
 	}
 	else{
-		//touched ground - update roll
-		motion.roll_axis = Dir3::new_unchecked(direction.cross(Vec3::Y).normalize());
-		motion.roll_speed = motion.speed * PI * BALL_RADIUS;
+		//TODO: touched ground - update roll
+		//motion.roll_axis = Dir3::new_unchecked(direction.cross(Vec3::Y).normalize());
+		//motion.roll_speed = motion.speed * PI * BALL_RADIUS;
 
 		if velocity.y < -MIN_BOUNCE_SPEED {
 			//bounce!
@@ -191,10 +239,10 @@ fn update_ball(
 		}		
 		transform.translation.y = BALL_RADIUS;
 	}
+	//info!("ball velocity:{}", velocity);
 	transform.rotate_axis(motion.roll_axis, -motion.roll_speed * time.delta_secs());
 	motion.direction = Dir3::new_unchecked(velocity.normalize_or(Vec3::Y));
 	motion.speed = velocity.length();
-
 }
 
 

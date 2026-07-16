@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use bevy::{color::palettes::css::{BLUE, CRIMSON, GREEN, PINK, RED, WHITE, YELLOW}, prelude::*};
+use bevy::{color::palettes::css::{BLUE, GREEN, PINK, RED, WHITE, YELLOW}, prelude::*};
 use strum::VariantArray;
 use strum_macros::VariantArray;
 
@@ -29,14 +29,13 @@ pub enum GizmoColour{
 
 impl GizmoColour{
 	pub const fn to_srgba(&self)-> Srgba{
-
 		match self{
-				GizmoColour::Red => RED,
-				GizmoColour::Blue => BLUE,
-				GizmoColour::White => WHITE,
-				GizmoColour::Green => GREEN,
-				GizmoColour::Yellow => YELLOW,
-				GizmoColour::Pink => PINK,
+			GizmoColour::Red => RED,
+			GizmoColour::Blue => BLUE,
+			GizmoColour::White => WHITE,
+			GizmoColour::Green => GREEN,
+			GizmoColour::Yellow => YELLOW,
+			GizmoColour::Pink => PINK,
 		}
 
 	}
@@ -60,8 +59,9 @@ impl GizmoSpawnMessage{
 struct TimeToLive(Timer);
 
 #[derive(Resource)]
-struct GameGizmoStore{
-	cross_colours:HashMap<GizmoColour, Handle<GizmoAsset>>,
+pub struct GameGizmoStore{
+	pub cross_colours:HashMap<GizmoColour, Handle<GizmoAsset>>,
+	pub sphere_colours:HashMap<GizmoColour, Handle<GizmoAsset>>,
 }
 
 
@@ -71,14 +71,24 @@ fn init_gizmos(
 	mut spawn_writer: MessageWriter<GizmoSpawnMessage>
 ){
 	let mut cross_colours:HashMap<GizmoColour, Handle<GizmoAsset>> = HashMap::new();
+	let mut sphere_colours:HashMap<GizmoColour, Handle<GizmoAsset>> = HashMap::new();
 	for colour in GizmoColour::VARIANTS{
 		let mut cross = GizmoAsset::new();
 		cross.cross(Isometry3d::IDENTITY, 1.0, colour.to_srgba());
 		cross_colours.insert(colour.clone(), gizmo_assets.add(cross));
+
+		let mut sphere = GizmoAsset::new();
+		sphere.sphere(Isometry3d::IDENTITY, 1.0, colour.to_srgba());
+		sphere_colours.insert(colour.clone(), gizmo_assets.add(sphere));
+
 	}
 
-	commands.insert_resource(GameGizmoStore{ cross_colours });
-	spawn_writer.write(GizmoSpawnMessage::new(Transform::from_xyz(0.,0.,0.), GizmoColour::Blue));
+	commands.insert_resource(
+		GameGizmoStore{ 
+			cross_colours, 
+			sphere_colours,
+		 });
+	//spawn_writer.write(GizmoSpawnMessage::new(Transform::from_xyz(0.,0.,0.), GizmoColour::Blue));
 }
 
 fn spawn_gizmos(
