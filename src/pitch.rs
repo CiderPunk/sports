@@ -248,7 +248,7 @@ fn spawn_pitch(
 	let penalty_spot = half_length - pitch_config.penalty_spot_from_goal;
 	info!("penalty arc angle: {}", penalty_arc_angle);
 
-
+	let half_line_width = 0.25 * pitch_config.line_width;
 	commands.spawn_scene_list(bsn_list![
 		//centre
 		line(pitch_config.width, pitch_config.line_width, true, true, line_material.clone())
@@ -257,10 +257,10 @@ fn spawn_pitch(
 		line(pitch_config.width, pitch_config.line_width, true, true, line_material.clone())
 		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, half_length)),
 		//top
-		line(pitch_config.width, pitch_config.line_width, true, true, line_material.clone())
+		line(pitch_config.width, pitch_config.line_width, true, false, line_material.clone())
 		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, -half_length)),
 		//right
-		line(pitch_config.length, pitch_config.line_width, false, false, line_material.clone())
+		line(pitch_config.length, pitch_config.line_width, false, true, line_material.clone())
 		Transform::from_translation(Vec3::new(half_width, LINE_FLOAT_HEIGHT, 0.)),
 		//left
 		line(pitch_config.length, pitch_config.line_width, false, false, line_material.clone())
@@ -293,11 +293,11 @@ fn spawn_pitch(
 		arc(pitch_config.corner_arc_radius, pitch_config.line_width, 1.5*PI, 0.5 * PI, 8, line_material.clone())
 		Transform::from_translation(Vec3::new(-half_width, LINE_FLOAT_HEIGHT, half_length)),
 		//top penalty arc
-		arc(pitch_config.penalty_arc_radius, pitch_config.line_width, (0.5 * PI) -penalty_arc_angle, 2. * penalty_arc_angle, 12, line_material.clone())
-		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, -penalty_spot)),
+		arc(pitch_config.penalty_arc_radius, pitch_config.line_width, (0.5 * PI) -penalty_arc_angle, 2. * penalty_arc_angle, 24, line_material.clone())
+		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, -penalty_spot - half_line_width)),
 		//bottom penalty arc
-		arc(pitch_config.penalty_arc_radius, pitch_config.line_width, (1.5 * PI) -penalty_arc_angle, 2. * penalty_arc_angle, 12, line_material.clone())
-		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, penalty_spot)),
+		arc(pitch_config.penalty_arc_radius, pitch_config.line_width, (1.5 * PI) -penalty_arc_angle, 2. * penalty_arc_angle, 24, line_material.clone())
+		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, penalty_spot + half_line_width)),
 		//centre spot
 		spot(0.5, spot_material.clone())
 		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT,0.)),

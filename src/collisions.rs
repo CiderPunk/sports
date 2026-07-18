@@ -21,7 +21,6 @@ pub struct InclusionResult{
 	pub correction:Vec3,
 }
 
-
 impl SphereCast{
 
 	pub fn cylinder_candidate_filter(&self, target_position:Vec3, target_radius:f32) -> bool{
@@ -143,3 +142,5 @@ impl SphereCast{
 		None
 	}
 }
+
+

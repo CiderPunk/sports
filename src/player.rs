@@ -2,12 +2,13 @@ use std::{f32::consts::PI, time::Duration};
 
 use bevy::{gltf::GltfMesh, light::NotShadowCaster, prelude::*, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, ball::BallMotion, colliders::CollisionCylinder, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative};
+use crate::{assets::AssetLoadState, ball::{BALL_RADIUS, BallMotion}, colliders::CollisionCylinder, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative};
 
 const PLAYER_SPEED: f32 = 10.;
-const PLAYER_INFLUENCE:f32 = 1.5;
-const PLAYER_DRIBBLE_CENTRE:f32 = 0.5;
 
+const INFLUENCE_CENTRE:f32 = 0.3;
+const DRAW_RADIUS: f32 = 0.75;
+const STATIC_RADIUS: f32 = 0.25;
 const PLAYER_COLLISION_RADIUS:f32 = 0.5;
 const PLAYER_HEIGHT:f32 = 1.8;
 
@@ -32,6 +33,11 @@ impl Plugin for PlayerPlugin{
 }
 
 
+#[derive(Component, Clone, Copy, Debug)]
+pub struct InfluenceZone{
+	pub static_radius:f32,
+	pub draw_radius:f32,
+}
 
 #[derive(Resource)]
 struct PlayerAnimations {
@@ -90,6 +96,7 @@ fn init_player(
 	gltfs: Res<Assets<Gltf>>,
 	player_assets:Res<PlayerAssets>,
 	mut graphs: ResMut<Assets<AnimationGraph>>,
+
 ){
 	info!("Initialize player animations");
 	let player = gltfs.get(&player_assets.player_gltf).expect("Missing player asset");
@@ -109,15 +116,42 @@ fn init_player(
 fn spawn_players(
 	mut commands: Commands,
 	player_assets: Res<PlayerAssets>,
+	game_gizmos:Res<GameGizmoStore>,
 ){
+
+
+	let blue_gizomo = game_gizmos.sphere_colours.get(&GizmoColour::Blue).expect("Missing colour gizmo");
+	let red_gizomo = game_gizmos.sphere_colours.get(&GizmoColour::Red).expect("Missing colour gizmo");
 	for i in 0 .. 1{
-		let id = commands.spawn((
+
+let id = commands.spawn((
 			Player,
 			MeshMaterial3d(player_assets.player_material1.clone()),
 			//WorldAssetRoot(player.default_scene.clone().expect("missing default scene")),
 			WorldAssetRoot(player_assets.player_scene.clone()),
 			Transform::from_xyz((i as f32 * 3.) - 0.75, 0., -1.),
-			CollisionCylinder{ radius: PLAYER_COLLISION_RADIUS, height: PLAYER_HEIGHT }
+			CollisionCylinder{ radius: PLAYER_COLLISION_RADIUS, height:PLAYER_HEIGHT },
+			children![(
+				InfluenceZone{ static_radius:STATIC_RADIUS, draw_radius:DRAW_RADIUS },
+				Transform::from_xyz(0.,BALL_RADIUS,INFLUENCE_CENTRE),
+				children![(
+					Gizmo{
+						handle:blue_gizomo.clone(),
+						..default()
+					},
+					Transform::from_scale(Vec3::splat(DRAW_RADIUS))
+				),(
+					Gizmo{
+						handle:red_gizomo.clone(),
+						..default()
+					},
+					Transform::from_scale(Vec3::splat(STATIC_RADIUS))
+				),
+				
+				
+				
+				]
+			)],
 		)).observe(init_player_animations)
 		.id();
 		if i == 0{
@@ -171,7 +205,7 @@ pub struct Movement{
 impl Movement{
 	pub fn velocity(&self)->Vec3{
 		let vel_2d = self.direction * PLAYER_SPEED;
-		Vec3::new(vel_2d.x, 0.0, vel_2d.y)
+		Vec3::new(vel_2d.x, 0.0, -vel_2d.y)
 	}
 
 }
