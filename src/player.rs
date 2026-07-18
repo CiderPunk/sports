@@ -33,7 +33,7 @@ impl Plugin for PlayerPlugin{
 }
 
 
-#[derive(Component)]
+#[derive(Component, Clone, Copy, Debug)]
 pub struct InfluenceZone{
 	pub static_radius:f32,
 	pub draw_radius:f32,

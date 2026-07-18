@@ -1,6 +1,4 @@
-use std::f32::consts::PI;
-
-use bevy::{math::{FloatPow, VectorSpace}, prelude::*};
+use bevy::{math::{FloatPow, VectorSpace, ops::sqrt}, prelude::*};
 use bevy_asset_loader::prelude::*;
 use crate::{assets::AssetLoadState, colliders::CollisionCylinder, collisions::{ HitResult, SphereCast}, game_gizmos::GizmoSpawnMessage, game_schedule::GameSchedule, game_state::GameState, player::{InfluenceZone, Movement, Player}};
 
@@ -18,7 +16,8 @@ const BALL_CROSS_SECTION_AREA:f32 = 0.038;
 const AIR_DAMPING:f32 = 0.5 * AIR_DENSITY * BALL_CROSS_SECTION_AREA * DRAG_COEFFICIENT;
 
 //ground damping
-const ROLLING_RESISTANCE:f32 = 0.08;
+//const ROLLING_RESISTANCE:f32 = 0.08;
+const ROLLING_RESISTANCE:f32 = 0.2;
 const BALL_MASS:f32 = 0.43;
 //don't need ball mass!
 //const GROUND_DECELERATION:f32 = (BALL_MASS * GRAVITY * ROLLING_RESISTANCE) / BALL_MASS;  
@@ -115,6 +114,7 @@ enum Zone{
 #[derive(Copy, Clone)]
 struct InfluencerCandidate{
 	zone:Zone,
+	zones:InfluenceZone,
 	dist_squared:f32,
 	entity:Entity,
 	origin:Vec3,
@@ -130,17 +130,17 @@ fn decide_influence(
 		let translation = transform.translation();
 		let dist_squared = (translation - ball_transform.translation).length_squared();
 		if dist_squared < influence.static_radius.squared(){
-			Some(InfluencerCandidate { zone: Zone::static_zone , dist_squared, entity: child_of.0, origin: translation })
+			Some(InfluencerCandidate { zone: Zone::static_zone, zones:influence.clone(), dist_squared, entity: child_of.0, origin: translation })
 		}
 		else if dist_squared < influence.draw_radius.squared(){
-			Some(InfluencerCandidate { zone: Zone::draw_zone , dist_squared, entity:child_of.0, origin: translation })
+			Some(InfluencerCandidate { zone: Zone::draw_zone, zones:influence.clone(), dist_squared, entity:child_of.0, origin: translation })
 		}
 		else{
 			None
 		}
 	}).collect();	
 
-	//TODO: this should consider all players with the ball in their influence
+	//TODO: this should consider all players with the ball in their influence zone
 	let mut closest = hits.first();
 	for hit in hits.iter(){
 		if hit.dist_squared < closest.unwrap().dist_squared { 
@@ -150,17 +150,22 @@ fn decide_influence(
 
 	if let Some(closest) = closest{
 		if let Ok(player_movement) = player_movement_query.get(closest.entity){
+			let velocity = player_movement.velocity();
 			let draw_velocity = match closest.zone{
-				Zone::draw_zone => ( closest.origin - ball_transform.translation).normalize_or(Vec3::ZERO),
+				Zone::draw_zone =>{ 
+					let distance = closest.dist_squared.sqrt() - closest.zones.static_radius;
+
+					(closest.origin - ball_transform.translation).normalize_or(Vec3::ZERO) * distance
+				},
 				Zone::static_zone => Vec3::ZERO,
 			};
-			let velocity = player_movement.velocity() + draw_velocity;
 
-
-	
-			let speed = velocity.length();
-			motion.speed = speed;
-			motion.direction = if speed > f32::EPSILON {	Dir3::new_unchecked(velocity / speed) } else { Dir3::X };
+			motion.dribble_draw = draw_velocity;
+			if let Ok((direction, speed)) = Dir3::new_and_length(velocity){
+				motion.direction = direction;
+				motion.speed = speed;
+			};
+		
 		}
 	};
 }
@@ -178,6 +183,10 @@ fn update_ball(
 	let mut direction =  motion.direction;
 
 	let sphere_cast = SphereCast{ origin: transform.translation, direction, radius: BALL_RADIUS, distance };
+
+
+	transform.translation += motion.dribble_draw * time.delta_secs();
+	motion.dribble_draw = Vec3::ZERO;
 
 	//broad filter for local collision candidates
 	let candidates:Vec<_> = players.iter().filter(|(player_transform, collision, _entity)|  sphere_cast.cylinder_candidate_filter(player_transform.translation, collision.radius) ).collect();
@@ -241,7 +250,8 @@ fn update_ball(
 	}
 	//info!("ball velocity:{}", velocity);
 	transform.rotate_axis(motion.roll_axis, -motion.roll_speed * time.delta_secs());
-	motion.direction = Dir3::new_unchecked(velocity.normalize_or(Vec3::Y));
+	//motion.direction = Dir3::new_unchecked(velocity.normalize_or(Vec3::Y));
+	motion.direction = Dir3::new(velocity).unwrap_or(Dir3::Y);
 	motion.speed = velocity.length();
 }
 
@@ -256,6 +266,7 @@ pub struct BallMotion{
 	//pub velocity:Vec3,
 	pub direction:Dir3,
 	pub speed:f32,
+	dribble_draw:Vec3,
 	roll_axis:Dir3,
 	roll_speed:f32,
 }
@@ -263,7 +274,7 @@ pub struct BallMotion{
 impl Default for BallMotion{
 
 	fn default()-> Self{
-		Self { direction: Dir3::Y, speed: 0., roll_axis: Dir3::Z, roll_speed: 0.}
+		Self { direction: Dir3::Y, dribble_draw:Vec3::ZERO, speed: 0., roll_axis: Dir3::Z, roll_speed: 0.}
 	}
 }
 
