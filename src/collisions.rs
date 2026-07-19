@@ -53,7 +53,7 @@ impl SphereCast{
 	}
 	
 
-	pub fn intersects_sphere(
+	pub fn _intersects_sphere(
 		&self,
 		target_position:Vec3, 
 		target_radius:f32, 

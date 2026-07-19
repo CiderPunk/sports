@@ -1,8 +1,8 @@
 use std::{f32::consts::PI, time::Duration};
 
-use bevy::{gltf::GltfMesh, light::NotShadowCaster, prelude::*, world_serialization::WorldInstanceReady};
+use bevy::{color::palettes::css::{BLACK, RED, WHITE}, gltf::GltfMesh, light::NotShadowCaster, prelude::*, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, ball::{BALL_RADIUS, BallMotion}, colliders::CollisionCylinder, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative};
+use crate::{assets::AssetLoadState, ball::{BALL_RADIUS, BallMotion}, colliders::CollisionCylinder, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, kit::{KitAssets, KitColour, KitConfiguration, KitFactory}};
 
 const PLAYER_SPEED: f32 = 10.;
 
@@ -27,7 +27,6 @@ impl Plugin for PlayerPlugin{
 			.add_systems(Update, update_active_marker)
 			.add_systems(Update, (move_player, animate_player).in_set(GameSchedule::PlayerUpdates))
 			//.add_systems(Update, dribble.in_set(GameSchedule::BallUpdate))
-			
 			;
 	}
 }
@@ -59,7 +58,7 @@ pub struct Animator{
 #[derive(AssetCollection, Resource, Default)]
 pub struct PlayerAssets {
   #[asset(path = "player.glb#Material0/std")]
-  pub player_material1: Handle<StandardMaterial>,
+  pub player_material: Handle<StandardMaterial>,
   #[asset(path = "player.glb#Scene0")]
   pub player_scene: Handle<WorldAsset>,
 	#[asset(path = "player.glb")]
@@ -116,18 +115,46 @@ fn spawn_players(
 	mut commands: Commands,
 	player_assets: Res<PlayerAssets>,
 	game_gizmos:Res<GameGizmoStore>,
+	mut kit_factory:ResMut<KitFactory>,
+	mut materials: ResMut<Assets<StandardMaterial>>,
+	kit_assets:Res<KitAssets>,
+	mut images: ResMut<Assets<Image>>,
 ){
-
 
 	let blue_gizomo = game_gizmos.sphere_colours.get(&GizmoColour::Blue).expect("Missing colour gizmo");
 	let red_gizomo = game_gizmos.sphere_colours.get(&GizmoColour::Red).expect("Missing colour gizmo");
 	for i in 0 .. 1{
 
-let id = commands.spawn((
+
+		let kit = KitConfiguration{ 
+			colour_primary: KitColour::from_srgba(RED), 
+			colour_secondary: KitColour::from_srgba(BLACK), 
+			colour_tertiary: KitColour::from_srgba(WHITE), 
+			shirt_number: 12 
+		};
+
+		let texture_handle = kit_factory.get_or_generate(kit, &kit_assets, images.reborrow());
+
+		let material_handle = if let Some(base_material) = materials.get(player_assets.player_material.id()){
+			let mut material = base_material.clone();
+			material.base_color_texture = Some(texture_handle.clone());
+			materials.add(material)
+		} else {
+      materials.add(StandardMaterial {
+					base_color_texture: None,//Some(texture_handle.clone()),
+					base_color: WHITE.into(),
+					..default()
+			})
+		};
+
+
+		let id = commands.spawn((
 			Player,
-			MeshMaterial3d(player_assets.player_material1.clone()),
+
 			//WorldAssetRoot(player.default_scene.clone().expect("missing default scene")),
 			WorldAssetRoot(player_assets.player_scene.clone()),
+			//MeshMaterial3d(player_assets.player_material.clone()),
+			MeshMaterial3d(material_handle),
 			Transform::from_xyz((i as f32 * 3.) - 0.75, 0., -1.),
 			CollisionCylinder{ radius: PLAYER_COLLISION_RADIUS, height:PLAYER_HEIGHT },
 			children![(
@@ -224,7 +251,7 @@ fn update_active_marker(
 	}
 	else{
 		for player_transform in active_player_query{
-			transform.translation = (player_transform.translation().clone() + Vec3::new(0.,0.,0.));
+			transform.translation = (player_transform.translation() + Vec3::new(0.,0.,0.));
 			transform.rotate_local_y(time.delta_secs());
 			*visible = Visibility::Visible;
 		}

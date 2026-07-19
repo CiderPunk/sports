@@ -131,10 +131,10 @@ fn decide_influence(
 		let translation = transform.translation();
 		let dist_squared = (translation - ball_transform.translation).length_squared();
 		if dist_squared < influence.static_radius.squared(){
-			Some(InfluencerCandidate { zone: Zone::static_zone, zones:influence.clone(), dist_squared, entity: child_of.0, origin: translation })
+			Some(InfluencerCandidate { zone: Zone::static_zone, zones:*influence, dist_squared, entity: child_of.0, origin: translation })
 		}
 		else if dist_squared < influence.draw_radius.squared(){
-			Some(InfluencerCandidate { zone: Zone::control_zone, zones:influence.clone(), dist_squared, entity:child_of.0, origin: translation })
+			Some(InfluencerCandidate { zone: Zone::control_zone, zones:*influence, dist_squared, entity:child_of.0, origin: translation })
 		}
 		else{
 			None
@@ -145,28 +145,26 @@ fn decide_influence(
 	let mut closest = hits.first();
 	for hit in hits.iter(){
 		if hit.dist_squared < closest.unwrap().dist_squared { 
-			closest = Some(&hit); 
+			closest = Some(hit); 
 		}
 	}
 
-	if let Some(closest) = closest{
-		if let Ok(player_movement) = player_movement_query.get(closest.entity){
-			let velocity = player_movement.velocity();
-			let control_velocity = match closest.zone{
-				Zone::control_zone =>{ 
-					let distance = closest.dist_squared.sqrt() - closest.zones.static_radius;
-					(closest.origin - ball_transform.translation).normalize_or(Vec3::ZERO) * distance * 2.0
-				},
-				Zone::static_zone => Vec3::ZERO,
-			};
+	if let Some(closest) = closest && let Ok(player_movement) = player_movement_query.get(closest.entity){
+		let velocity = player_movement.velocity();
+		let control_velocity = match closest.zone{
+			Zone::control_zone =>{ 
+				let distance = closest.dist_squared.sqrt() - closest.zones.static_radius;
+				(closest.origin - ball_transform.translation).normalize_or(Vec3::ZERO) * distance * 2.0
+			},
+			Zone::static_zone => Vec3::ZERO,
+		};
 
-			motion.dribble_draw = motion.dribble_draw.lerp(control_velocity, time.delta_secs() * 2.0);
-			if let Ok((direction, speed)) = Dir3::new_and_length(velocity){
-				motion.direction = direction;
-				motion.speed = speed;
-			};
-		
-		}
+		motion.dribble_draw = motion.dribble_draw.lerp(control_velocity, time.delta_secs() * 2.0);
+		if let Ok((direction, speed)) = Dir3::new_and_length(velocity){
+			motion.direction = direction;
+			motion.speed = speed;
+		};
+	
 	};
 }
 
