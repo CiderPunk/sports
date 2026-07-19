@@ -107,7 +107,7 @@ fn get_next_collision(
 #[derive(Copy, Clone)]
 enum Zone{
 	static_zone,
-	draw_zone,
+	control_zone,
 }
 
 
@@ -124,6 +124,7 @@ fn decide_influence(
 	ball:Single<(&mut BallMotion, &Transform), Without<Player>>,
 	influencers:Query<(&GlobalTransform,&InfluenceZone, &ChildOf)>,
 	player_movement_query:Query<&Movement>,
+	time:Res<Time>,
 ){
 	let (mut motion, ball_transform) = ball.into_inner();
 	let hits:Vec<InfluencerCandidate> = influencers.iter().filter_map(|(transform, influence, child_of)| { 
@@ -133,7 +134,7 @@ fn decide_influence(
 			Some(InfluencerCandidate { zone: Zone::static_zone, zones:influence.clone(), dist_squared, entity: child_of.0, origin: translation })
 		}
 		else if dist_squared < influence.draw_radius.squared(){
-			Some(InfluencerCandidate { zone: Zone::draw_zone, zones:influence.clone(), dist_squared, entity:child_of.0, origin: translation })
+			Some(InfluencerCandidate { zone: Zone::control_zone, zones:influence.clone(), dist_squared, entity:child_of.0, origin: translation })
 		}
 		else{
 			None
@@ -151,16 +152,15 @@ fn decide_influence(
 	if let Some(closest) = closest{
 		if let Ok(player_movement) = player_movement_query.get(closest.entity){
 			let velocity = player_movement.velocity();
-			let draw_velocity = match closest.zone{
-				Zone::draw_zone =>{ 
+			let control_velocity = match closest.zone{
+				Zone::control_zone =>{ 
 					let distance = closest.dist_squared.sqrt() - closest.zones.static_radius;
-
-					(closest.origin - ball_transform.translation).normalize_or(Vec3::ZERO) * distance
+					(closest.origin - ball_transform.translation).normalize_or(Vec3::ZERO) * distance * 2.0
 				},
 				Zone::static_zone => Vec3::ZERO,
 			};
 
-			motion.dribble_draw = draw_velocity;
+			motion.dribble_draw = motion.dribble_draw.lerp(control_velocity, time.delta_secs() * 2.0);
 			if let Ok((direction, speed)) = Dir3::new_and_length(velocity){
 				motion.direction = direction;
 				motion.speed = speed;
@@ -186,7 +186,8 @@ fn update_ball(
 
 
 	transform.translation += motion.dribble_draw * time.delta_secs();
-	motion.dribble_draw = Vec3::ZERO;
+
+	motion.dribble_draw = motion.dribble_draw.lerp(Vec3::ZERO, time.delta_secs() * 2.0);
 
 	//broad filter for local collision candidates
 	let candidates:Vec<_> = players.iter().filter(|(player_transform, collision, _entity)|  sphere_cast.cylinder_candidate_filter(player_transform.translation, collision.radius) ).collect();
@@ -257,11 +258,11 @@ fn update_ball(
 
 
 
-#[derive(Component)]
+#[derive(Component, Debug)]
 #[require(BallMotion)]
 pub struct Ball;
 
-#[derive(Component)]
+#[derive(Component, Debug)]
 pub struct BallMotion{
 	//pub velocity:Vec3,
 	pub direction:Dir3,

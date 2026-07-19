@@ -73,7 +73,7 @@ impl SphereCast{
 		let t = (-b-discriminant.sqrt()) / 2.;
 		if t >= 0.0 && t <= self.distance{
 			let hit_position = self.origin + *self.direction * t;
-			let normal = (hit_position - target_position).normalize();
+			let normal = (hit_position - target_position).normalize_or(Vec3::Y);
 			
 			Some(HitResult { 
 				distance: t, 

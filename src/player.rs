@@ -6,9 +6,9 @@ use crate::{assets::AssetLoadState, ball::{BALL_RADIUS, BallMotion}, colliders::
 
 const PLAYER_SPEED: f32 = 10.;
 
-const INFLUENCE_CENTRE:f32 = 0.3;
-const DRAW_RADIUS: f32 = 0.75;
-const STATIC_RADIUS: f32 = 0.25;
+const INFLUENCE_CENTRE:f32 = 0.25;
+const CONTROL_RADIUS: f32 = 0.6;
+const STATIC_RADIUS: f32 = 0.2;
 const PLAYER_COLLISION_RADIUS:f32 = 0.5;
 const PLAYER_HEIGHT:f32 = 1.8;
 
@@ -51,7 +51,7 @@ struct PlayerAnimations {
 pub struct Player;
 
 
-#[derive(Component)]
+#[derive(Component, Debug)]
 pub struct Animator{
 	entity:Entity,
 }
@@ -64,7 +64,6 @@ pub struct PlayerAssets {
   pub player_scene: Handle<WorldAsset>,
 	#[asset(path = "player.glb")]
   pub player_gltf: Handle<Gltf>,
-
 
   #[asset(path = "marker.glb")]
 	pub highlight_gltf: Handle<Gltf>,
@@ -132,14 +131,14 @@ let id = commands.spawn((
 			Transform::from_xyz((i as f32 * 3.) - 0.75, 0., -1.),
 			CollisionCylinder{ radius: PLAYER_COLLISION_RADIUS, height:PLAYER_HEIGHT },
 			children![(
-				InfluenceZone{ static_radius:STATIC_RADIUS, draw_radius:DRAW_RADIUS },
+				InfluenceZone{ static_radius:STATIC_RADIUS, draw_radius:CONTROL_RADIUS },
 				Transform::from_xyz(0.,BALL_RADIUS,INFLUENCE_CENTRE),
 				children![(
 					Gizmo{
 						handle:blue_gizomo.clone(),
 						..default()
 					},
-					Transform::from_scale(Vec3::splat(DRAW_RADIUS))
+					Transform::from_scale(Vec3::splat(CONTROL_RADIUS))
 				),(
 					Gizmo{
 						handle:red_gizomo.clone(),
@@ -147,13 +146,13 @@ let id = commands.spawn((
 					},
 					Transform::from_scale(Vec3::splat(STATIC_RADIUS))
 				),
-				
-				
-				
 				]
 			)],
 		)).observe(init_player_animations)
 		.id();
+
+
+	info!("spawned player {}", id);
 		if i == 0{
 			commands.entity(id).insert(ActivePlayer);
 		}

@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-#[derive(Component)]
+#[derive(Component, Debug)]
 pub struct CollisionCylinder{
 	pub	radius:f32,
 	pub height:f32,
