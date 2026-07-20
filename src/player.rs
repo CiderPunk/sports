@@ -1,7 +1,18 @@
+
+use rand::Rng; 
+use rand::seq::SliceRandom;
 use std::{f32::consts::PI, time::Duration};
 
-use bevy::{color::palettes::css::{BLACK, PINK, RED, WHITE, YELLOW}, gltf::GltfMesh, light::NotShadowCaster, prelude::*, world_serialization::WorldInstanceReady};
+use bevy::{color::palettes::css::{BLACK, BLUE, BROWN, CORAL, DARK_CYAN, GREEN, GREY, MAGENTA, PINK, PURPLE, RED, WHITE, YELLOW}, gltf::GltfMesh, light::NotShadowCaster, math::VectorSpace, prelude::*, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
+
+use bevy_prng::WyRand;
+use bevy_rand::global::GlobalRng;
+
+
+use rand::seq::IndexedRandom;
+use strum::VariantArray;
+
 use crate::{assets::AssetLoadState, ball::{BALL_RADIUS, BallMotion}, colliders::CollisionCylinder, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, kit::{KitAssets, KitColour, KitConfiguration, KitFactory, KitPattern}};
 
 const PLAYER_SPEED: f32 = 10.;
@@ -117,41 +128,47 @@ fn spawn_players(
 	mut commands: Commands,
 	player_assets: Res<PlayerAssets>,
 	game_gizmos:Res<GameGizmoStore>,
-	mut kit_factory:ResMut<KitFactory>,
-	mut materials: ResMut<Assets<StandardMaterial>>,
-	kit_assets:Res<KitAssets>,
-	mut images: ResMut<Assets<Image>>,
+  mut rng: Single<&mut WyRand, With<GlobalRng>>
 ){
+let kit_colours = [BLACK, WHITE, RED, GREEN, BLUE, PURPLE, PINK, YELLOW, BROWN, MAGENTA, DARK_CYAN, GREY, CORAL];
+
 
 	let blue_gizomo = game_gizmos.sphere_colours.get(&GizmoColour::Blue).expect("Missing colour gizmo");
 	let red_gizomo = game_gizmos.sphere_colours.get(&GizmoColour::Red).expect("Missing colour gizmo");
-	for i in 0 .. 1{
+	for i in 0 .. 11{
 
-
+		let pattern = KitPattern::VARIANTS.choose(&mut rng).unwrap();
+		let primary = kit_colours.choose(&mut rng).unwrap();
+		let secondary = kit_colours.choose(&mut rng).unwrap();
+		let tertiary = kit_colours.choose(&mut rng).unwrap();
+		
 		let kit = KitConfiguration{ 
-			pattern: KitPattern::Striped,
-			colour_primary: KitColour::from_srgba(PINK), 
-			colour_secondary: KitColour::from_srgba(BLACK), 
-			colour_tertiary: KitColour::from_srgba(YELLOW), 
+			pattern: *pattern,
+			colour_primary: KitColour::from_srgba(*primary), 
+			colour_secondary: KitColour::from_srgba(*secondary), 
+			colour_tertiary: KitColour::from_srgba(*tertiary), 
 			shirt_number: 12 
 		};
 
 
 		let id = commands.spawn((
 			Player{ kit },
+			Movement{ direction: Vec2::ZERO, target_angle: PI * 1.5 },
 			WorldAssetRoot(player_assets.player_scene.clone()),
 			Transform::from_xyz((i as f32 * 3.) - 0.75, 0., -1.),
 			CollisionCylinder{ radius: PLAYER_COLLISION_RADIUS, height:PLAYER_HEIGHT },
 			children![(
 				InfluenceZone{ static_radius:STATIC_RADIUS, draw_radius:CONTROL_RADIUS },
 				Transform::from_xyz(0.,BALL_RADIUS,INFLUENCE_CENTRE),
+				/*
 				children![(
 					Gizmo{
 						handle:blue_gizomo.clone(),
 						..default()
-					},
+					}, 
 					Transform::from_scale(Vec3::splat(CONTROL_RADIUS))
 				),(
+					
 					Gizmo{
 						handle:red_gizomo.clone(),
 						..default()
@@ -159,6 +176,7 @@ fn spawn_players(
 					Transform::from_scale(Vec3::splat(STATIC_RADIUS))
 				),
 				]
+				 */
 			)],
 		))
 		.observe(init_player_animations)

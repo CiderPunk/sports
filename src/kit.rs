@@ -1,5 +1,6 @@
 use bevy::{platform::collections::HashMap, prelude::*, reflect::TypeData};
 use bevy_asset_loader::prelude::*;
+use strum_macros::VariantArray;
 
 use crate::assets::AssetLoadState;
 pub struct KitPlugin;
@@ -42,12 +43,14 @@ pub struct KitAssets {
 }
 
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, VariantArray, Hash, PartialEq, Eq)]
 pub enum KitPattern{
 	Solid,
 	Striped,
 	Quatered, 
 }
+
+
 
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
