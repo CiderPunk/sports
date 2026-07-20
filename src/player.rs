@@ -1,8 +1,8 @@
 use std::{f32::consts::PI, time::Duration};
 
-use bevy::{color::palettes::css::{BLACK, RED, WHITE}, gltf::GltfMesh, light::NotShadowCaster, prelude::*, world_serialization::WorldInstanceReady};
+use bevy::{color::palettes::css::{BLACK, PINK, RED, WHITE, YELLOW}, gltf::GltfMesh, light::NotShadowCaster, prelude::*, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, ball::{BALL_RADIUS, BallMotion}, colliders::CollisionCylinder, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, kit::{KitAssets, KitColour, KitConfiguration, KitFactory}};
+use crate::{assets::AssetLoadState, ball::{BALL_RADIUS, BallMotion}, colliders::CollisionCylinder, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, kit::{KitAssets, KitColour, KitConfiguration, KitFactory, KitPattern}};
 
 const PLAYER_SPEED: f32 = 10.;
 
@@ -47,7 +47,9 @@ struct PlayerAnimations {
 
 #[derive(Component,Debug)]
 #[require(Movement)]
-pub struct Player;
+pub struct Player{
+	kit:KitConfiguration,
+}
 
 
 #[derive(Component, Debug)]
@@ -127,34 +129,17 @@ fn spawn_players(
 
 
 		let kit = KitConfiguration{ 
-			colour_primary: KitColour::from_srgba(RED), 
+			pattern: KitPattern::Striped,
+			colour_primary: KitColour::from_srgba(PINK), 
 			colour_secondary: KitColour::from_srgba(BLACK), 
-			colour_tertiary: KitColour::from_srgba(WHITE), 
+			colour_tertiary: KitColour::from_srgba(YELLOW), 
 			shirt_number: 12 
-		};
-
-		let texture_handle = kit_factory.get_or_generate(kit, &kit_assets, images.reborrow());
-
-		let material_handle = if let Some(base_material) = materials.get(player_assets.player_material.id()){
-			let mut material = base_material.clone();
-			material.base_color_texture = Some(texture_handle.clone());
-			materials.add(material)
-		} else {
-      materials.add(StandardMaterial {
-					base_color_texture: None,//Some(texture_handle.clone()),
-					base_color: WHITE.into(),
-					..default()
-			})
 		};
 
 
 		let id = commands.spawn((
-			Player,
-
-			//WorldAssetRoot(player.default_scene.clone().expect("missing default scene")),
+			Player{ kit },
 			WorldAssetRoot(player_assets.player_scene.clone()),
-			//MeshMaterial3d(player_assets.player_material.clone()),
-			MeshMaterial3d(material_handle),
 			Transform::from_xyz((i as f32 * 3.) - 0.75, 0., -1.),
 			CollisionCylinder{ radius: PLAYER_COLLISION_RADIUS, height:PLAYER_HEIGHT },
 			children![(
@@ -175,28 +160,71 @@ fn spawn_players(
 				),
 				]
 			)],
-		)).observe(init_player_animations)
+		))
+		.observe(init_player_animations)
+		.observe(init_player_skin)
 		.id();
 
 
-	info!("spawned player {}", id);
+		info!("spawned player {}", id);
 		if i == 0{
 			commands.entity(id).insert(ActivePlayer);
 		}
 	}
-
+	
 
 	//spawn active marker
-	commands.spawn((
-		ActiveMarker,
-		Mesh3d(player_assets.cone_marker.clone().expect("Cone marker not loaded")),
-		MeshMaterial3d(player_assets.marker_material.clone()),
-		Transform::from_xyz(0.,0.,0.,),
-		Visibility::Hidden,
-		NotShadowCaster,
-	));
+		commands.spawn((
+			ActiveMarker,
+			Mesh3d(player_assets.cone_marker.clone().expect("Cone marker not loaded")),
+			MeshMaterial3d(player_assets.marker_material.clone()),
+			Transform::from_xyz(0.,0.,0.,),
+			Visibility::Hidden,
+			NotShadowCaster,
+		));
 
+	}
+
+fn init_player_skin(
+	event:On<WorldInstanceReady>,
+	children:Query<&Children>,
+	player_query:Query<&Player>,
+	mut material_query:Query<Entity, With<MeshMaterial3d<StandardMaterial>>>,
+	mut kit_factory:ResMut<KitFactory>,
+	mut materials: ResMut<Assets<StandardMaterial>>,
+	player_assets: Res<PlayerAssets>,
+	kit_assets:Res<KitAssets>,
+	mut images: ResMut<Assets<Image>>,
+	mut commands:Commands,
+){
+	info!("init skin");
+	for child in children.iter_descendants(event.entity){
+		if let Ok(mesh_entity) = material_query.get(child) 
+			&& let Ok(player) = player_query.get(event.entity) {
+
+			let texture_handle = kit_factory.get_or_generate(player.kit, &kit_assets, images);
+
+			let material_handle = 
+				if let Some(base_material) = materials.get(player_assets.player_material.id()){
+					let mut material = base_material.clone();
+						material.base_color_texture = Some(texture_handle.clone());
+						materials.add(material)
+				} else {
+					materials.add(StandardMaterial {
+						base_color_texture: Some(texture_handle.clone()),
+						..default()
+					})
+				};
+
+			commands.entity(mesh_entity).insert(MeshMaterial3d(material_handle));
+
+
+			break;
+		}
+	}
 }
+
+
 
 fn init_player_animations(
 	event:On<WorldInstanceReady>,

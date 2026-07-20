@@ -32,13 +32,27 @@ impl KitColour{
 pub struct KitAssets {
   #[asset(path = "textures/kit.png")]
   pub default_kit: Handle<Image>,
-  #[asset(path = "textures/skin.png")]
+  #[asset(path = "textures/kit-quarter.png")]
+  pub kit_quatered: Handle<Image>,
+  #[asset(path = "textures/kit-stripe.png")]
+  pub kit_striped: Handle<Image>,
+  
+	#[asset(path = "textures/skin.png")]
   pub default_skin: Handle<Image>,
 }
 
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub enum KitPattern{
+	Solid,
+	Striped,
+	Quatered, 
+}
+
+
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct KitConfiguration{
+	pub pattern:KitPattern,
 	pub colour_primary: KitColour,
 	pub colour_secondary: KitColour,
 	pub colour_tertiary: KitColour,
@@ -55,16 +69,22 @@ impl KitFactory{
 		&mut self, 
 		config: KitConfiguration,
 		kit_assets:&Res<KitAssets>,
-		mut images: Mut<'_, Assets<Image>>, 
+		mut images: ResMut<Assets<Image>>, 
 	) ->Handle<Image>{
 
-		
 		if let Some(texture) = self.cache.get(&config){
 			return texture.clone();
 		};
 		info!("Generating kit");
+
+		let kit_image_id = match config.pattern{
+				KitPattern::Solid => kit_assets.default_kit.id(),
+				KitPattern::Striped => kit_assets.kit_striped.id(),
+				KitPattern::Quatered => kit_assets.kit_quatered.id(),
+		};
+
 		let mut skin_texture = images.get(kit_assets.default_skin.id()).expect("Missing player skin texture").clone();
-		let kit_image = images.get(kit_assets.default_kit.id()).expect("Missing kit texture").clone();
+		let kit_image = images.get(kit_image_id).expect("Missing kit texture").clone();
 	
 	 	let mut skin_data = skin_texture.data.take().expect("Skin texture lacks raw data bytes");   
 		let kit_data = kit_image.data.as_ref().expect("Kit texture lacks raw data");
@@ -72,15 +92,25 @@ impl KitFactory{
 		let skin_chunks = skin_data.chunks_exact_mut(4);
 		let kit_chunks = kit_data.chunks_exact(4);
 
-		for (skin_pixel, _kit_pixel) in skin_chunks.zip(kit_chunks){
-			skin_pixel.copy_from_slice(&config.colour_primary.0);
-			//if kit_pixel[1] > 200{
-			//	skin_pixel.copy_from_slice(&config.colour_primary.0);
-			//}
+		for (skin_pixel, kit_pixel) in skin_chunks.zip(kit_chunks){
+			//skin_pixel.copy_from_slice(&config.colour_primary.0);
+			
+			
+			if kit_pixel[2] > 200{
+				skin_pixel.copy_from_slice(&config.colour_primary.0);
+			}
+			if kit_pixel[0] > 200{
+				skin_pixel.copy_from_slice(&config.colour_secondary.0);
+			}
+			if kit_pixel[1] > 200{
+				skin_pixel.copy_from_slice(&config.colour_tertiary.0);
+			}
 		}
 		skin_texture.data = Some(skin_data);
 		let handle = images.add(skin_texture);
 		self.cache.insert(config, handle.clone());
+
+		info!("Kit complete");
 		handle
 		//kit_assets.default_skin.clone()
 	}
