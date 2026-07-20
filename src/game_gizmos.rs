@@ -28,7 +28,7 @@ pub enum GizmoColour{
 }
 
 impl GizmoColour{
-	pub const fn to_srgba(&self)-> Srgba{
+	pub const fn to_srgba(self)-> Srgba{
 		match self{
 			GizmoColour::Red => RED,
 			GizmoColour::Blue => BLUE,
@@ -49,8 +49,10 @@ pub struct GizmoSpawnMessage{
 	colour:GizmoColour,
 }
 
+
 impl GizmoSpawnMessage{
-	pub fn new(transform:Transform, colour:GizmoColour)->Self{
+	/// Creates a new [`GizmoSpawnMessage`].
+pub fn new(transform:Transform, colour:GizmoColour)->Self{
 		Self{ transform, colour }
 	}
 }
@@ -75,11 +77,11 @@ fn init_gizmos(
 	for colour in GizmoColour::VARIANTS{
 		let mut cross = GizmoAsset::new();
 		cross.cross(Isometry3d::IDENTITY, 1.0, colour.to_srgba());
-		cross_colours.insert(colour.clone(), gizmo_assets.add(cross));
+		cross_colours.insert(*colour, gizmo_assets.add(cross));
 
 		let mut sphere = GizmoAsset::new();
 		sphere.sphere(Isometry3d::IDENTITY, 1.0, colour.to_srgba());
-		sphere_colours.insert(colour.clone(), gizmo_assets.add(sphere));
+		sphere_colours.insert(*colour, gizmo_assets.add(sphere));
 
 	}
 
