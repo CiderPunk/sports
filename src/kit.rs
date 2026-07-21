@@ -1,5 +1,8 @@
 use bevy::{platform::collections::HashMap, prelude::*, reflect::TypeData};
 use bevy_asset_loader::prelude::*;
+use bevy_prng::WyRand;
+use bevy_rand::global::GlobalRng;
+use rand::seq::IndexedRandom;
 use strum_macros::VariantArray;
 
 use crate::assets::AssetLoadState;
@@ -40,6 +43,8 @@ pub struct KitAssets {
   
 	#[asset(path = "textures/skin.png")]
   pub default_skin: Handle<Image>,
+	#[asset(paths("textures/skin-matt.png","textures/skin-jam.png", "textures/skin-tezz.png"), collection(typed))]
+	skins: Vec<Handle<Image>>,
 }
 
 
@@ -73,6 +78,7 @@ impl KitFactory{
 		config: KitConfiguration,
 		kit_assets:&Res<KitAssets>,
 		mut images: ResMut<Assets<Image>>, 
+		mut rng: Single<&mut WyRand, With<GlobalRng>>,
 	) ->Handle<Image>{
 
 		if let Some(texture) = self.cache.get(&config){
@@ -86,7 +92,7 @@ impl KitFactory{
 				KitPattern::Quatered => kit_assets.kit_quatered.id(),
 		};
 
-		let mut skin_texture = images.get(kit_assets.default_skin.id()).expect("Missing player skin texture").clone();
+		let mut skin_texture = images.get(kit_assets.skins.choose(&mut rng).expect("failed picking a random skin").id()).expect("Missing player skin texture").clone();
 		let kit_image = images.get(kit_image_id).expect("Missing kit texture").clone();
 	
 	 	let mut skin_data = skin_texture.data.take().expect("Skin texture lacks raw data bytes");   
@@ -97,8 +103,6 @@ impl KitFactory{
 
 		for (skin_pixel, kit_pixel) in skin_chunks.zip(kit_chunks){
 			//skin_pixel.copy_from_slice(&config.colour_primary.0);
-			
-			
 			if kit_pixel[2] > 200{
 				skin_pixel.copy_from_slice(&config.colour_primary.0);
 			}

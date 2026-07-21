@@ -1,7 +1,8 @@
 *.blend1
-
-
+*.kra~
+*.png~
 # Added by cargo
 
 /target
-/assets/textures/*.png~
+
+
