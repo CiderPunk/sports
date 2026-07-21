@@ -128,7 +128,7 @@ fn spawn_players(
 	mut commands: Commands,
 	player_assets: Res<PlayerAssets>,
 	game_gizmos:Res<GameGizmoStore>,
-  mut rng: Single<&mut WyRand, With<GlobalRng>>
+  mut rng: Single<&mut WyRand, With<GlobalRng>>,
 ){
 let kit_colours = [BLACK, WHITE, RED, GREEN, BLUE, PURPLE, PINK, YELLOW, BROWN, MAGENTA, DARK_CYAN, GREY, CORAL];
 
@@ -214,13 +214,15 @@ fn init_player_skin(
 	kit_assets:Res<KitAssets>,
 	mut images: ResMut<Assets<Image>>,
 	mut commands:Commands,
+	
+  mut rng: Single<&mut WyRand, With<GlobalRng>>
 ){
 	info!("init skin");
 	for child in children.iter_descendants(event.entity){
 		if let Ok(mesh_entity) = material_query.get(child) 
 			&& let Ok(player) = player_query.get(event.entity) {
 
-			let texture_handle = kit_factory.get_or_generate(player.kit, &kit_assets, images);
+			let texture_handle = kit_factory.get_or_generate(player.kit, &kit_assets, images, rng);
 
 			let material_handle = 
 				if let Some(base_material) = materials.get(player_assets.player_material.id()){
