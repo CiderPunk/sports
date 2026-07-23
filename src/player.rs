@@ -21,7 +21,10 @@ const INFLUENCE_CENTRE:f32 = 0.25;
 const CONTROL_RADIUS: f32 = 0.6;
 const STATIC_RADIUS: f32 = 0.2;
 const PLAYER_COLLISION_RADIUS:f32 = 0.5;
-const PLAYER_HEIGHT:f32 = 1.8;
+pub const PLAYER_HEIGHT:f32 = 1.8;
+
+pub const PLAYER_MAX_DRIBBLE_DISTANCE:f32 = 1.2;
+pub const PLAYER_OPTIMAL_DRIBBLE_DISTANCE:f32 = 0.4;
 
 
 pub struct PlayerPlugin;
@@ -135,6 +138,10 @@ let kit_colours = [BLACK, WHITE, RED, GREEN, BLUE, PURPLE, PINK, YELLOW, BROWN, 
 
 	let blue_gizomo = game_gizmos.sphere_colours.get(&GizmoColour::Blue).expect("Missing colour gizmo");
 	let red_gizomo = game_gizmos.sphere_colours.get(&GizmoColour::Red).expect("Missing colour gizmo");
+
+	let pink_arrow = game_gizmos.arrow_colours.get(&GizmoColour::Pink).expect("missing pink arrow");
+	let red_arrow = game_gizmos.arrow_colours.get(&GizmoColour::Red).expect("missing pink arrow");
+
 	for i in 0 .. 11{
 
 		let pattern = KitPattern::VARIANTS.choose(&mut rng).unwrap();
@@ -157,7 +164,29 @@ let kit_colours = [BLACK, WHITE, RED, GREEN, BLUE, PURPLE, PINK, YELLOW, BROWN, 
 			WorldAssetRoot(player_assets.player_scene.clone()),
 			Transform::from_xyz((i as f32 * 3.) - 0.75, 0., -1.),
 			CollisionCylinder{ radius: PLAYER_COLLISION_RADIUS, height:PLAYER_HEIGHT },
-			children![(
+			children![
+						(
+					Gizmo{
+						handle:pink_arrow.clone(),
+						..default()
+					},
+					Transform::from_scale(Vec3::splat(PLAYER_MAX_DRIBBLE_DISTANCE)).with_rotation(Quat::from_axis_angle(Vec3::Y, PI * 0.25)),
+				),
+				(
+					Gizmo{
+						handle:pink_arrow.clone(),
+						..default()
+					},
+					Transform::from_scale(Vec3::splat(PLAYER_MAX_DRIBBLE_DISTANCE)).with_rotation(Quat::from_axis_angle(Vec3::Y, PI * -0.25)),
+				),
+				(
+					Gizmo{
+						handle:red_arrow.clone(),
+						..default()
+					},
+					Transform::from_scale(Vec3::splat(PLAYER_OPTIMAL_DRIBBLE_DISTANCE)),
+				),
+				(
 				InfluenceZone{ static_radius:STATIC_RADIUS, draw_radius:CONTROL_RADIUS },
 				Transform::from_xyz(0.,BALL_RADIUS,INFLUENCE_CENTRE),
 				/*
@@ -214,7 +243,7 @@ fn init_player_skin(
 	kit_assets:Res<KitAssets>,
 	mut images: ResMut<Assets<Image>>,
 	mut commands:Commands,
-	
+
   mut rng: Single<&mut WyRand, With<GlobalRng>>
 ){
 	info!("init skin");

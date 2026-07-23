@@ -1,6 +1,8 @@
-use bevy::{math::{FloatPow, VectorSpace, ops::sqrt}, prelude::*};
+use std::f32::consts::PI;
+
+use bevy::{ecs::error::info, math::{FloatPow, VectorSpace, ops::sqrt}, prelude::*, render::render_phase::CachedBinKey};
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, colliders::CollisionCylinder, collisions::{ HitResult, SphereCast}, game_gizmos::GizmoSpawnMessage, game_schedule::GameSchedule, game_state::GameState, player::{InfluenceZone, Movement, Player}};
+use crate::{assets::AssetLoadState, colliders::CollisionCylinder, collisions::{ HitResult, SphereCast}, game_gizmos::GizmoSpawnMessage, game_schedule::GameSchedule, game_state::GameState, player::{InfluenceZone, Movement, PLAYER_HEIGHT, PLAYER_MAX_DRIBBLE_DISTANCE, PLAYER_OPTIMAL_DRIBBLE_DISTANCE, Player}};
 
 
 const BALL_SCALE: f32 = 0.5;
@@ -22,6 +24,9 @@ const BALL_MASS:f32 = 0.43;
 //don't need ball mass!
 //const GROUND_DECELERATION:f32 = (BALL_MASS * GRAVITY * ROLLING_RESISTANCE) / BALL_MASS;  
 const GROUND_DECELERATION:f32 = GRAVITY * ROLLING_RESISTANCE;  
+
+
+
 
 
 pub struct BallPlugin;
@@ -120,6 +125,65 @@ struct InfluencerCandidate{
 	origin:Vec3,
 }
 
+const MAX_INFLUENCE:f32 = 2.0;
+
+
+fn decide_influence(
+	ball:Single<(&mut BallMotion, &Transform), Without<Player>>,
+	players:Query<(&GlobalTransform, Entity), With<Player>>,
+	player_movement:Query<&Movement>,
+){
+	let (mut ball_motion, ball_transform) = ball.into_inner();
+
+let mut candidates:Vec<_> = players.iter().filter_map(|(transform, entity)|{
+	let player_translation = transform.translation();
+		let diff = player_translation.xz() - ball_transform.translation.xz();
+		let dist_squared = diff.length_squared();
+		if dist_squared < PLAYER_MAX_DRIBBLE_DISTANCE * PLAYER_MAX_DRIBBLE_DISTANCE
+			&& player_translation.y < ball_transform.translation.y 
+			&& player_translation.y + PLAYER_HEIGHT > ball_transform.translation.y {
+			Some((dist_squared, transform, entity, diff))
+		}
+		else{
+			None
+		}
+	}).collect::<Vec<(f32, &GlobalTransform, Entity, Vec2)>>();
+	//sort by distance
+	candidates.sort_by(|p1,p2| p1.0.total_cmp(&p2.0));
+
+	for (len_squared, transform, entity, diff) in candidates{
+		//vertical filter
+		let forward_2d = transform.forward().xz();
+		let dot =  forward_2d.dot(diff);
+		if dot < 0.{ continue;} // ball behind the player
+
+		let forward_2d_norm = forward_2d.normalize_or_zero();
+		let diff_norm = diff.normalize_or_zero();
+
+		let angle = forward_2d_norm.angle_to(diff_norm);
+
+		//within 45 degrees eitherway
+		if angle.abs() < (PI * 0.25){
+			//info!("Control!");
+
+			if let Ok(movement) = player_movement.get(entity){
+				
+				let diff_factor =  (len_squared.sqrt() /PLAYER_OPTIMAL_DRIBBLE_DISTANCE).clamp(0.8, 1.2);
+
+				let velocity = movement.velocity() * diff_factor;
+				if let Ok((direction, speed)) = Dir3::new_and_length(velocity){
+					ball_motion.direction = direction;
+					ball_motion.speed = speed;
+				};
+				return;
+			}
+		}
+		
+	}
+}
+
+
+/*
 fn decide_influence(
 	ball:Single<(&mut BallMotion, &Transform), Without<Player>>,
 	influencers:Query<(&GlobalTransform,&InfluenceZone, &ChildOf)>,
@@ -167,6 +231,7 @@ fn decide_influence(
 	
 	};
 }
+	 */
 
 
 fn update_ball(
