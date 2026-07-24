@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use bevy::{color::palettes::css::{BLUE, GREEN, PINK, RED, WHITE, YELLOW}, prelude::*};
+use bevy::{color::palettes::css::{BLUE, GREEN, PINK, RED, WHITE, YELLOW}, math::VectorSpace, prelude::*};
 use strum::VariantArray;
 use strum_macros::VariantArray;
 
@@ -64,6 +64,7 @@ struct TimeToLive(Timer);
 pub struct GameGizmoStore{
 	pub cross_colours:HashMap<GizmoColour, Handle<GizmoAsset>>,
 	pub sphere_colours:HashMap<GizmoColour, Handle<GizmoAsset>>,
+	pub arrow_colours:HashMap<GizmoColour, Handle<GizmoAsset>>,
 }
 
 
@@ -74,6 +75,7 @@ fn init_gizmos(
 ){
 	let mut cross_colours:HashMap<GizmoColour, Handle<GizmoAsset>> = HashMap::new();
 	let mut sphere_colours:HashMap<GizmoColour, Handle<GizmoAsset>> = HashMap::new();
+	let mut arrow_colours:HashMap<GizmoColour, Handle<GizmoAsset>> = HashMap::new();
 	for colour in GizmoColour::VARIANTS{
 		let mut cross = GizmoAsset::new();
 		cross.cross(Isometry3d::IDENTITY, 1.0, colour.to_srgba());
@@ -83,13 +85,17 @@ fn init_gizmos(
 		sphere.sphere(Isometry3d::IDENTITY, 1.0, colour.to_srgba());
 		sphere_colours.insert(*colour, gizmo_assets.add(sphere));
 
+		let mut arrow = GizmoAsset::new();
+		arrow.arrow(Vec3::ZERO, Vec3::Z, colour.to_srgba());
+		arrow_colours.insert(*colour, gizmo_assets.add(arrow));
 	}
 
 	commands.insert_resource(
 		GameGizmoStore{ 
 			cross_colours, 
 			sphere_colours,
-		 });
+			arrow_colours,
+		});
 	//spawn_writer.write(GizmoSpawnMessage::new(Transform::from_xyz(0.,0.,0.), GizmoColour::Blue));
 }
 
