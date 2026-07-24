@@ -13,19 +13,20 @@ use bevy_rand::global::GlobalRng;
 use rand::seq::IndexedRandom;
 use strum::VariantArray;
 
-use crate::{assets::AssetLoadState, ball::{BALL_RADIUS, BallMotion}, colliders::CollisionCylinder, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, kit::{KitAssets, KitColour, KitConfiguration, KitFactory, KitPattern}};
+use crate::{assets::AssetLoadState, ball::BALL_RADIUS, colliders::CollisionCylinder, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, kit::{KitAssets, KitColour, KitConfiguration, KitFactory, KitPattern}};
 
 const PLAYER_SPEED: f32 = 10.;
 
 const INFLUENCE_CENTRE:f32 = 0.25;
 const CONTROL_RADIUS: f32 = 0.6;
 const STATIC_RADIUS: f32 = 0.2;
-const PLAYER_COLLISION_RADIUS:f32 = 0.5;
+const PLAYER_COLLISION_RADIUS:f32 = 0.4;
 pub const PLAYER_HEIGHT:f32 = 1.8;
 
 pub const PLAYER_MAX_DRIBBLE_DISTANCE:f32 = 1.2;
-pub const PLAYER_OPTIMAL_DRIBBLE_DISTANCE:f32 = 0.4;
-
+pub const PLAYER_OPTIMAL_DRIBBLE_DISTANCE:f32 = 0.7;
+pub const PLAYER_DRIBBLE_ANGLE:f32 = PI * 0.25;
+pub const PLAYER_DRAW_ANGLE:f32 = PI * 0.5;
 
 pub struct PlayerPlugin;
 

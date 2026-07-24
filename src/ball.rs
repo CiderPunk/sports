@@ -1,8 +1,8 @@
 use std::f32::consts::PI;
 
-use bevy::{ecs::error::info, math::{FloatPow, VectorSpace, ops::sqrt}, prelude::*, render::render_phase::CachedBinKey};
+use bevy::{color::palettes::css::RED, ecs::error::info, math::{FloatPow, VectorSpace, ops::sqrt}, prelude::*, render::{render_phase::CachedBinKey, render_resource::VertexStepMode}};
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, colliders::CollisionCylinder, collisions::{ HitResult, SphereCast}, game_gizmos::GizmoSpawnMessage, game_schedule::GameSchedule, game_state::GameState, player::{InfluenceZone, Movement, PLAYER_HEIGHT, PLAYER_MAX_DRIBBLE_DISTANCE, PLAYER_OPTIMAL_DRIBBLE_DISTANCE, Player}};
+use crate::{assets::AssetLoadState, colliders::CollisionCylinder, collisions::{ HitResult, SphereCast}, game_gizmos::GizmoSpawnMessage, game_schedule::GameSchedule, game_state::GameState, player::{InfluenceZone, Movement, PLAYER_DRIBBLE_ANGLE, PLAYER_HEIGHT, PLAYER_MAX_DRIBBLE_DISTANCE, PLAYER_OPTIMAL_DRIBBLE_DISTANCE, Player}};
 
 
 const BALL_SCALE: f32 = 0.5;
@@ -153,32 +153,38 @@ let mut candidates:Vec<_> = players.iter().filter_map(|(transform, entity)|{
 
 	for (len_squared, transform, entity, diff) in candidates{
 		//vertical filter
-		let forward_2d = transform.forward().xz();
-		let dot =  forward_2d.dot(diff);
+		let forward_2d = transform.forward().xz().normalize_or_zero();
+		let dot = diff.dot(forward_2d);
+		//let dot = forward_2d.dot(diff);
 		if dot < 0.{ continue;} // ball behind the player
-
-		let forward_2d_norm = forward_2d.normalize_or_zero();
 		let diff_norm = diff.normalize_or_zero();
-
-		let angle = forward_2d_norm.angle_to(diff_norm);
-
+		let angle = forward_2d.angle_to(diff_norm).abs();
+		
 		//within 45 degrees eitherway
-		if angle.abs() < (PI * 0.25){
+		if angle.abs() < PLAYER_DRIBBLE_ANGLE{
 			//info!("Control!");
-
 			if let Ok(movement) = player_movement.get(entity){
+				let diff_factor =  (PLAYER_OPTIMAL_DRIBBLE_DISTANCE / len_squared.sqrt()).clamp(0.8, 1.2);
+				info!("diff:{}", diff_factor);
+				let velocity = (movement.velocity() * diff_factor).with_y(ball_motion.direction.y * ball_motion.speed);
 				
-				let diff_factor =  (len_squared.sqrt() /PLAYER_OPTIMAL_DRIBBLE_DISTANCE).clamp(0.8, 1.2);
-
-				let velocity = movement.velocity() * diff_factor;
 				if let Ok((direction, speed)) = Dir3::new_and_length(velocity){
 					ball_motion.direction = direction;
 					ball_motion.speed = speed;
+					ball_motion.dribble_draw = Vec3::ZERO;
 				};
 				return;
 			}
 		}
+		else{
+			let forward_project = -PLAYER_OPTIMAL_DRIBBLE_DISTANCE * forward_2d;
+			let draw_location = Vec3::new(forward_project.x, 0., forward_project.y) + transform.translation();
+			ball_motion.dribble_draw = (draw_location - ball_transform.translation).normalize() * 4.0;
+			info!("draw {}", ball_motion.dribble_draw);
+		}
+
 		
+
 	}
 }
 
@@ -238,6 +244,7 @@ fn update_ball(
 	ball:Single<(&mut BallMotion, &mut Transform), Without<Player>>,
 	players:Query<(&Transform,&CollisionCylinder, Entity), With<Player>>,
 	time:Res<Time>,
+	mut gizmos: Gizmos,
 	//mut gizmo_writer:MessageWriter<GizmoSpawnMessage>,
 ){
 	let (mut motion, mut transform) = ball.into_inner();
@@ -246,11 +253,15 @@ fn update_ball(
 	let mut direction =  motion.direction;
 
 	let sphere_cast = SphereCast{ origin: transform.translation, direction, radius: BALL_RADIUS, distance };
+	
 
 
+	gizmos.arrow(transform.translation, transform.translation + motion.dribble_draw, RED);
 	transform.translation += motion.dribble_draw * time.delta_secs();
+	motion.dribble_draw = motion.dribble_draw.lerp(Vec3::ZERO, time.delta_secs() * 4.0);
 
-	motion.dribble_draw = motion.dribble_draw.lerp(Vec3::ZERO, time.delta_secs() * 2.0);
+
+
 
 	//broad filter for local collision candidates
 	let candidates:Vec<_> = players.iter().filter(|(player_transform, collision, _entity)|  sphere_cast.cylinder_candidate_filter(player_transform.translation, collision.radius) ).collect();
@@ -292,8 +303,8 @@ fn update_ball(
 	}
 	else{
 		//TODO: touched ground - update roll
-		//motion.roll_axis = Dir3::new_unchecked(direction.cross(Vec3::Y).normalize());
-		//motion.roll_speed = motion.speed * PI * BALL_RADIUS;
+		motion.roll_axis = Dir3::new(direction.cross(Vec3::Y)).unwrap_or(Dir3::Y);
+		motion.roll_speed = motion.speed * PI * BALL_RADIUS;
 
 		if velocity.y < -MIN_BOUNCE_SPEED {
 			//bounce!
