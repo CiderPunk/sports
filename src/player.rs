@@ -25,6 +25,8 @@ pub const PLAYER_HEIGHT:f32 = 1.8;
 
 pub const PLAYER_MAX_DRIBBLE_DISTANCE:f32 = 1.2;
 pub const PLAYER_OPTIMAL_DRIBBLE_DISTANCE:f32 = 0.7;
+
+
 pub const PLAYER_DRIBBLE_ANGLE:f32 = PI * 0.25;
 pub const PLAYER_DRAW_ANGLE:f32 = PI * 0.5;
 
@@ -141,6 +143,7 @@ let kit_colours = [BLACK, WHITE, RED, GREEN, BLUE, PURPLE, PINK, YELLOW, BROWN, 
 	let red_gizomo = game_gizmos.sphere_colours.get(&GizmoColour::Red).expect("Missing colour gizmo");
 
 	let pink_arrow = game_gizmos.arrow_colours.get(&GizmoColour::Pink).expect("missing pink arrow");
+	let blue_arrow = game_gizmos.arrow_colours.get(&GizmoColour::Blue).expect("missing pink arrow");
 	let red_arrow = game_gizmos.arrow_colours.get(&GizmoColour::Red).expect("missing pink arrow");
 
 	for i in 0 .. 11{
@@ -171,15 +174,31 @@ let kit_colours = [BLACK, WHITE, RED, GREEN, BLUE, PURPLE, PINK, YELLOW, BROWN, 
 						handle:pink_arrow.clone(),
 						..default()
 					},
-					Transform::from_scale(Vec3::splat(PLAYER_MAX_DRIBBLE_DISTANCE)).with_rotation(Quat::from_axis_angle(Vec3::Y, PI * 0.25)),
+					Transform::from_scale(Vec3::splat(PLAYER_MAX_DRIBBLE_DISTANCE)).with_rotation(Quat::from_axis_angle(Vec3::Y,  PLAYER_DRIBBLE_ANGLE)),
 				),
 				(
 					Gizmo{
 						handle:pink_arrow.clone(),
 						..default()
 					},
-					Transform::from_scale(Vec3::splat(PLAYER_MAX_DRIBBLE_DISTANCE)).with_rotation(Quat::from_axis_angle(Vec3::Y, PI * -0.25)),
+					Transform::from_scale(Vec3::splat(PLAYER_MAX_DRIBBLE_DISTANCE)).with_rotation(Quat::from_axis_angle(Vec3::Y,  -PLAYER_DRIBBLE_ANGLE)),
 				),
+		
+				(
+					Gizmo{
+						handle:blue_arrow.clone(),
+						..default()
+					},
+					Transform::from_scale(Vec3::splat(PLAYER_MAX_DRIBBLE_DISTANCE)).with_rotation(Quat::from_axis_angle(Vec3::Y,  PLAYER_DRAW_ANGLE)),
+				),
+				(
+					Gizmo{
+						handle:blue_arrow.clone(),
+						..default()
+					},
+					Transform::from_scale(Vec3::splat(PLAYER_MAX_DRIBBLE_DISTANCE)).with_rotation(Quat::from_axis_angle(Vec3::Y,  -PLAYER_DRAW_ANGLE)),
+				),
+
 				(
 					Gizmo{
 						handle:red_arrow.clone(),
@@ -371,7 +390,7 @@ fn move_player(
 			movement.target_angle = movement.direction.to_angle();
 		}
 		transform.translation += Vec3::new(movement.direction.x, 0., -movement.direction.y) * time.delta_secs() * PLAYER_SPEED;
-		transform.rotation = transform.rotation.rotate_towards(Quat::from_axis_angle(Vec3::Y, movement.target_angle + (PI * 0.5)).normalize(), time.delta_secs() * 4.0 *  PI);
+		transform.rotation = transform.rotation.rotate_towards(Quat::from_axis_angle(Vec3::Y, movement.target_angle + (PI * 0.5)).normalize(), time.delta_secs() * 2.0 *  PI);
 	}
 }
 

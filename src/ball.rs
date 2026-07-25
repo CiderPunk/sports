@@ -156,7 +156,7 @@ let mut candidates:Vec<_> = players.iter().filter_map(|(transform, entity)|{
 		let forward_2d = transform.forward().xz().normalize_or_zero();
 		let dot = diff.dot(forward_2d);
 		//let dot = forward_2d.dot(diff);
-		if dot < 0.{ continue;} // ball behind the player
+		if dot < -0.4{ continue;} // ball behind the player
 		let diff_norm = diff.normalize_or_zero();
 		let angle = forward_2d.angle_to(diff_norm).abs();
 		
@@ -165,22 +165,25 @@ let mut candidates:Vec<_> = players.iter().filter_map(|(transform, entity)|{
 			//info!("Control!");
 			if let Ok(movement) = player_movement.get(entity){
 				let diff_factor =  (PLAYER_OPTIMAL_DRIBBLE_DISTANCE / len_squared.sqrt()).clamp(0.8, 1.2);
-				info!("diff:{}", diff_factor);
+				//info!("diff:{}", diff_factor);
 				let velocity = (movement.velocity() * diff_factor).with_y(ball_motion.direction.y * ball_motion.speed);
-				
 				if let Ok((direction, speed)) = Dir3::new_and_length(velocity){
 					ball_motion.direction = direction;
 					ball_motion.speed = speed;
 					ball_motion.dribble_draw = Vec3::ZERO;
+					ball_motion.last_touch = Some(entity);
 				};
 				return;
 			}
 		}
 		else{
-			let forward_project = -PLAYER_OPTIMAL_DRIBBLE_DISTANCE * forward_2d;
-			let draw_location = Vec3::new(forward_project.x, 0., forward_project.y) + transform.translation();
-			ball_motion.dribble_draw = (draw_location - ball_transform.translation).normalize() * 4.0;
-			info!("draw {}", ball_motion.dribble_draw);
+			if ball_motion.dribble_draw == Vec3::ZERO{
+				let forward_project = -PLAYER_OPTIMAL_DRIBBLE_DISTANCE * forward_2d;
+				let draw_location = Vec3::new(forward_project.x, 0., forward_project.y) + transform.translation();
+				ball_motion.dribble_draw = (draw_location - ball_transform.translation).normalize() * 4.0;
+				ball_motion.last_touch = Some(entity);
+			}
+			//info!("draw {}", ball_motion.dribble_draw);
 		}
 
 		
@@ -258,13 +261,17 @@ fn update_ball(
 
 	gizmos.arrow(transform.translation, transform.translation + motion.dribble_draw, RED);
 	transform.translation += motion.dribble_draw * time.delta_secs();
-	motion.dribble_draw = motion.dribble_draw.lerp(Vec3::ZERO, time.delta_secs() * 4.0);
+	motion.dribble_draw = Vec3::ZERO;
+	//motion.dribble_draw = motion.dribble_draw.lerp(Vec3::ZERO, time.delta_secs() * 4.0);
 
 
 
 
 	//broad filter for local collision candidates
-	let candidates:Vec<_> = players.iter().filter(|(player_transform, collision, _entity)|  sphere_cast.cylinder_candidate_filter(player_transform.translation, collision.radius) ).collect();
+	let candidates:Vec<_> = players.iter().filter(|(player_transform, collision, entity)| 
+		(motion.last_touch.is_some() && motion.last_touch.unwrap() != *entity) 
+		|| sphere_cast.cylinder_candidate_filter(player_transform.translation, collision.radius) 
+	).collect();
 
 	separate_inclusions(&mut transform, &candidates);
 
@@ -308,7 +315,7 @@ fn update_ball(
 
 		if velocity.y < -MIN_BOUNCE_SPEED {
 			//bounce!
-			info!("bounce {}", velocity.y);
+			//info!("bounce {}", velocity.y);
 			velocity.y *= -BALL_COEFFECIENT_OF_RESTITUTION;
 		}			
 		else{
@@ -344,12 +351,13 @@ pub struct BallMotion{
 	dribble_draw:Vec3,
 	roll_axis:Dir3,
 	roll_speed:f32,
+	last_touch:Option<Entity>,
 }
 
 impl Default for BallMotion{
 
 	fn default()-> Self{
-		Self { direction: Dir3::Y, dribble_draw:Vec3::ZERO, speed: 0., roll_axis: Dir3::Z, roll_speed: 0.}
+		Self { direction: Dir3::Y, dribble_draw:Vec3::ZERO, speed: 0., roll_axis: Dir3::Z, roll_speed: 0., last_touch:None, }
 	}
 }
 
