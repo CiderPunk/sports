@@ -28,7 +28,7 @@ pub const PLAYER_OPTIMAL_DRIBBLE_DISTANCE:f32 = 0.7;
 
 
 pub const PLAYER_DRIBBLE_ANGLE:f32 = PI * 0.25;
-pub const PLAYER_DRAW_ANGLE:f32 = PI * 0.5;
+//pub const PLAYER_DRAW_ANGLE:f32 = PI * 0.5;
 
 pub struct PlayerPlugin;
 
@@ -183,22 +183,6 @@ let kit_colours = [BLACK, WHITE, RED, GREEN, BLUE, PURPLE, PINK, YELLOW, BROWN, 
 					},
 					Transform::from_scale(Vec3::splat(PLAYER_MAX_DRIBBLE_DISTANCE)).with_rotation(Quat::from_axis_angle(Vec3::Y,  -PLAYER_DRIBBLE_ANGLE)),
 				),
-		
-				(
-					Gizmo{
-						handle:blue_arrow.clone(),
-						..default()
-					},
-					Transform::from_scale(Vec3::splat(PLAYER_MAX_DRIBBLE_DISTANCE)).with_rotation(Quat::from_axis_angle(Vec3::Y,  PLAYER_DRAW_ANGLE)),
-				),
-				(
-					Gizmo{
-						handle:blue_arrow.clone(),
-						..default()
-					},
-					Transform::from_scale(Vec3::splat(PLAYER_MAX_DRIBBLE_DISTANCE)).with_rotation(Quat::from_axis_angle(Vec3::Y,  -PLAYER_DRAW_ANGLE)),
-				),
-
 				(
 					Gizmo{
 						handle:red_arrow.clone(),
@@ -236,6 +220,7 @@ let kit_colours = [BLACK, WHITE, RED, GREEN, BLUE, PURPLE, PINK, YELLOW, BROWN, 
 		info!("spawned player {}", id);
 		if i == 0{
 			commands.entity(id).insert(ActivePlayer);
+			info!("Player {}", id);
 		}
 	}
 	

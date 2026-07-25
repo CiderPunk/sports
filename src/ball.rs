@@ -93,7 +93,6 @@ fn get_next_collision(
 )->Option<HitResult>{
 	let sphere_cast = SphereCast{ origin: transform.translation, direction:*direction,  radius: BALL_RADIUS, distance: distance };
 	let mut closest:Option<HitResult> = None;
-	let mut player_position:Option<Vec3> = None;
 	for (player_transform, collision_cylinder, entity) in candidates.iter(){
 		if let Some(hit) = sphere_cast.intersect_vertical_cylinder(player_transform.translation, collision_cylinder.radius, collision_cylinder.height, *entity){
 			match closest {
@@ -151,12 +150,13 @@ let mut candidates:Vec<_> = players.iter().filter_map(|(transform, entity)|{
 	//sort by distance
 	candidates.sort_by(|p1,p2| p1.0.total_cmp(&p2.0));
 
+
 	for (len_squared, transform, entity, diff) in candidates{
 		//vertical filter
 		let forward_2d = transform.forward().xz().normalize_or_zero();
 		let dot = diff.dot(forward_2d);
 		//let dot = forward_2d.dot(diff);
-		if dot < -0.4{ continue;} // ball behind the player
+		if dot < 0.{ continue;} // ball behind the player
 		let diff_norm = diff.normalize_or_zero();
 		let angle = forward_2d.angle_to(diff_norm).abs();
 		
@@ -185,9 +185,6 @@ let mut candidates:Vec<_> = players.iter().filter_map(|(transform, entity)|{
 			}
 			//info!("draw {}", ball_motion.dribble_draw);
 		}
-
-		
-
 	}
 }
 
@@ -257,20 +254,16 @@ fn update_ball(
 
 	let sphere_cast = SphereCast{ origin: transform.translation, direction, radius: BALL_RADIUS, distance };
 	
-
-
 	gizmos.arrow(transform.translation, transform.translation + motion.dribble_draw, RED);
 	transform.translation += motion.dribble_draw * time.delta_secs();
 	motion.dribble_draw = Vec3::ZERO;
 	//motion.dribble_draw = motion.dribble_draw.lerp(Vec3::ZERO, time.delta_secs() * 4.0);
 
 
-
-
 	//broad filter for local collision candidates
 	let candidates:Vec<_> = players.iter().filter(|(player_transform, collision, entity)| 
-		(motion.last_touch.is_some() && motion.last_touch.unwrap() != *entity) 
-		|| sphere_cast.cylinder_candidate_filter(player_transform.translation, collision.radius) 
+		motion.last_touch.as_ref() != Some(entity)
+		&& sphere_cast.cylinder_candidate_filter(player_transform.translation, collision.radius) 
 	).collect();
 
 	separate_inclusions(&mut transform, &candidates);
@@ -286,6 +279,8 @@ fn update_ball(
 				//gizmo_writer.write(GizmoSpawnMessage::new(transform.clone(), crate::game_gizmos::GizmoColour::White));
 				//gizmo_writer.write(GizmoSpawnMessage::new(Transform::from_translation(hit.position), crate::game_gizmos::GizmoColour::Pink));
 				//end debugging
+
+				info!("Collision: {} {:?}", hit.entity, motion.last_touch);
 				transform.translation = hit.position;		
 				distance -= hit.distance;
 				direction = Dir3::new_unchecked( direction.reflect(*hit.normal));
