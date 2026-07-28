@@ -16,14 +16,14 @@ use strum::VariantArray;
 use crate::{assets::AssetLoadState, ball::BALL_RADIUS, colliders::CollisionCylinder, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, kit::{KitAssets, KitColour, KitConfiguration, KitFactory, KitPattern}};
 
 const PLAYER_SPEED: f32 = 10.;
-
+const PLAYER_TURN_SPEED: f32 = 3.0;
 const INFLUENCE_CENTRE:f32 = 0.25;
 const CONTROL_RADIUS: f32 = 0.6;
 const STATIC_RADIUS: f32 = 0.2;
 const PLAYER_COLLISION_RADIUS:f32 = 0.4;
 pub const PLAYER_HEIGHT:f32 = 1.8;
 
-pub const PLAYER_MAX_DRIBBLE_DISTANCE:f32 = 1.2;
+pub const PLAYER_MAX_DRIBBLE_DISTANCE:f32 = 1.4;
 pub const PLAYER_OPTIMAL_DRIBBLE_DISTANCE:f32 = 0.7;
 
 
@@ -190,27 +190,7 @@ let kit_colours = [BLACK, WHITE, RED, GREEN, BLUE, PURPLE, PINK, YELLOW, BROWN, 
 					},
 					Transform::from_scale(Vec3::splat(PLAYER_OPTIMAL_DRIBBLE_DISTANCE)),
 				),
-				(
-				InfluenceZone{ static_radius:STATIC_RADIUS, draw_radius:CONTROL_RADIUS },
-				Transform::from_xyz(0.,BALL_RADIUS,INFLUENCE_CENTRE),
-				/*
-				children![(
-					Gizmo{
-						handle:blue_gizomo.clone(),
-						..default()
-					}, 
-					Transform::from_scale(Vec3::splat(CONTROL_RADIUS))
-				),(
-					
-					Gizmo{
-						handle:red_gizomo.clone(),
-						..default()
-					},
-					Transform::from_scale(Vec3::splat(STATIC_RADIUS))
-				),
-				]
-				 */
-			)],
+			],
 		))
 		.observe(init_player_animations)
 		.observe(init_player_skin)
@@ -375,7 +355,8 @@ fn move_player(
 			movement.target_angle = movement.direction.to_angle();
 		}
 		transform.translation += Vec3::new(movement.direction.x, 0., -movement.direction.y) * time.delta_secs() * PLAYER_SPEED;
-		transform.rotation = transform.rotation.rotate_towards(Quat::from_axis_angle(Vec3::Y, movement.target_angle + (PI * 0.5)).normalize(), time.delta_secs() * 2.0 *  PI);
+		
+		transform.rotation = transform.rotation.rotate_towards(Quat::from_axis_angle(Vec3::Y, movement.target_angle + (PI * 0.5)).normalize(), time.delta_secs() * PLAYER_TURN_SPEED *  PI);
 	}
 }
 

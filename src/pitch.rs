@@ -1,9 +1,9 @@
 use std::f32::consts::PI;
 
-use bevy::{asset::RenderAssetUsages, color::palettes::css::PINK, light::{NotShadowCaster, NotShadowReceiver}, math::VectorSpace, mesh::Indices, prelude::*};
+use bevy::{asset::RenderAssetUsages, color::palettes::css::PINK, gltf::GltfMesh, light::{NotShadowCaster, NotShadowReceiver}, math::VectorSpace, mesh::Indices, prelude::*, transform};
 use bevy_asset_loader::prelude::*;
 
-use crate::{assets::AssetLoadState, game_state::GameState};
+use crate::{assets::AssetLoadState, game_state::GameState, get_gltf_primative};
 
 const LINE_FLOAT_HEIGHT: f32 = 0.05;
 
@@ -22,14 +22,13 @@ impl Plugin for PitchPlugin{
 				LoadingStateConfig::new(AssetLoadState::Startup)
 				.load_collection::<PitchAssets>(),
 			)			
-			.add_systems(OnEnter(GameState::Initialize), modify_materials)
-			.add_systems(OnEnter(GameState::Playing), spawn_pitch);
+			.add_systems(OnEnter(GameState::Initialize), (modify_materials, init_pitch_models))
+			.add_systems(OnEnter(GameState::Playing), (spawn_pitch, spawn_pitch_models));
 	}
 }
 
 #[derive(AssetCollection, Resource)]
 pub struct PitchAssets {
-
   //#[asset(path = "pitch.glb#Scene0")]
   //pub pitch_scene: Handle<WorldAsset>,
 	#[asset(path = "pitch.glb#Material3/std")]
@@ -42,7 +41,40 @@ pub struct PitchAssets {
 	pub line_material: Handle<StandardMaterial>,
 	#[asset(path = "pitch.glb#Material0/std")]
 	pub spot_material: Handle<StandardMaterial>,	
+  #[asset(path = "goal.glb")]
+	pub goal_gltf: Handle<Gltf>,
+	#[asset(path = "goal.glb#Material0/std")]
+	pub goal_material: Handle<StandardMaterial>,
+	#[asset(path = "goal.glb#Material1/std")]
+	pub net_material: Handle<StandardMaterial>,
+
 }
+
+
+
+#[derive(Resource)]
+pub struct PitchModels{
+	pub goal_left:Handle<Mesh>,
+	pub goal_right:Handle<Mesh>,
+	pub net:Handle<Mesh>,
+	pub goal_material:Handle<StandardMaterial>,
+	pub net_material:Handle<StandardMaterial>,
+}
+
+fn init_pitch_models(
+	pitch_assets:ResMut<PitchAssets>,
+	gltf_assets: Res<Assets<Gltf>>,
+  gltf_meshes: Res<Assets<GltfMesh>>,
+	mut commands:Commands,
+) -> Result<()> {
+	let models = gltf_assets.get(&pitch_assets.goal_gltf).ok_or("Missing pitch models")?;
+	let goal_left = get_gltf_primative!(gltf_meshes, models, "goal-left").mesh.clone();
+	let goal_right = get_gltf_primative!(gltf_meshes, models, "goal-right").mesh.clone();
+	let net = get_gltf_primative!(gltf_meshes, models, "net").mesh.clone();
+	commands.insert_resource(PitchModels{ goal_left, goal_right, net, goal_material:pitch_assets.goal_material.clone(), net_material:pitch_assets.net_material.clone() });
+	Ok(())
+}
+
 
 fn pitch_segment(half_width:f32, half_length:f32, translation:Vec3, material:Handle<StandardMaterial>)->impl Scene{
 	bsn!{
@@ -114,6 +146,9 @@ fn spot(size:f32, material:Handle<StandardMaterial>) -> impl Scene{
 	}
 }
 
+
+
+
 fn line(
 	length:f32, 
 	width:f32, horizontal:bool, bevel_side:bool, material:Handle<StandardMaterial>)->impl Scene{
@@ -144,7 +179,7 @@ fn line(
 	bsn!{
 		Mesh3d(asset_value(
 			Mesh::new(bevy::mesh::PrimitiveTopology::TriangleList, RenderAssetUsages::default())
-				.with_inserted_attribute( //TODO: this should be a trapezium
+				.with_inserted_attribute( 
 					Mesh::ATTRIBUTE_POSITION, 
 					verticies,
 				)
@@ -223,11 +258,77 @@ fn modify_materials(
 	}
 }
 
+
+fn spawn_pitch_models(
+	mut commands:Commands,
+	pitch_models:Res<PitchModels>,
+	pitch_config:Res<PitchConfiguration>,
+){
+
+
+	let half_pitch_length = pitch_config.length * 0.5;
+
+	let lower_goal_transform = Transform::from_xyz(0.,0., half_pitch_length).with_rotation(Quat::from_axis_angle(Vec3::Y, PI));
+	commands.spawn_scene_list(
+
+		bsn_list![
+			(
+				Transform{
+					translation:Vec3::new(0.,0.,half_pitch_length),
+					rotation:Quat::from_axis_angle(Vec3::Y, PI),
+				}
+				goal_model(&pitch_models, &pitch_config)
+			),
+			(
+				Transform::from_xyz(0.,0., -half_pitch_length)
+				goal_model(&pitch_models, &pitch_config)
+			)
+		]);
+}
+
+
+fn goal_model(	
+	pitch_models:&Res<PitchModels>,
+	pitch_config:&Res<PitchConfiguration>,
+)-> impl Scene{
+
+	let goal_left = pitch_models.goal_left.clone();
+	let goal_right = pitch_models.goal_right.clone();
+	let net = pitch_models.net.clone();
+	let net_material = pitch_models.net_material.clone();
+	let goal_material_1 = pitch_models.goal_material.clone();
+	let goal_material_2 = pitch_models.goal_material.clone();
+	let goal_height = pitch_config.goal_height;
+	let goal_width = pitch_config.goal_width;
+	let half_goal_width = goal_width * 0.5;
+	bsn!{
+		Children[
+			(
+				Transform::from_xyz(-half_goal_width, goal_height, 0.)
+				Mesh3d(goal_left)
+				MeshMaterial3d<StandardMaterial>(goal_material_1)
+			),
+			(
+				Transform::from_xyz(half_goal_width, goal_height, 0.)
+				Mesh3d(goal_right)
+				MeshMaterial3d<StandardMaterial>(goal_material_2)
+			),
+			(
+				Transform{
+					translation:Vec3::new(0.,goal_height, 0.),
+					scale:Vec3::new(half_goal_width, 1., 1.),
+				}
+				Mesh3d(net)
+				MeshMaterial3d<StandardMaterial>(net_material)
+			)
+		]
+	}
+}
+
 fn spawn_pitch(
 	mut commands:Commands,
 	pitch_assets:Res<PitchAssets>,
 	pitch_config:Res<PitchConfiguration>,
-
 ){
 	let half_width = pitch_config.width * 0.5;
 	let half_length = pitch_config.length * 0.5;
@@ -357,6 +458,7 @@ pub struct PitchConfiguration{
 	goal_area_width:f32,
 	goal_area_length:f32,
 	pub goal_width:f32,
+	pub goal_height:f32,
 	corner_arc_radius:f32,
 	pub penalty_spot_from_goal:f32,
 	penalty_arc_radius:f32,
@@ -375,6 +477,7 @@ impl Default for PitchConfiguration{
 			goal_area_width: 18.32,
 			goal_area_length: 5.5,
 			goal_width: 7.32,
+			goal_height:2.44,
 			corner_arc_radius: 1.,
 			penalty_spot_from_goal: 11.,
 			penalty_arc_radius: 9.15,

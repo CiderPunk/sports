@@ -75,7 +75,7 @@ fn separate_inclusions(
 	for _ in 0 .. 3{
 		let sphere_cast = SphereCast{ origin: transform.translation, direction: Dir3::X, radius: BALL_RADIUS, distance: 0. };
 		let mut moved = false;
-		for ((player_transform, player_collision, _)) in candidates.iter(){
+		for (player_transform, player_collision, _) in candidates.iter(){
 			if let Some(inclusion_result) = sphere_cast.inclusion_vertical_cylinder(player_transform.translation, player_collision.radius, player_collision.height){
 				transform.translation += inclusion_result.correction;
 				moved = true;
@@ -124,7 +124,6 @@ struct InfluencerCandidate{
 	origin:Vec3,
 }
 
-const MAX_INFLUENCE:f32 = 2.0;
 
 
 fn decide_influence(
@@ -156,7 +155,7 @@ let mut candidates:Vec<_> = players.iter().filter_map(|(transform, entity)|{
 		let forward_2d = transform.forward().xz().normalize_or_zero();
 		let dot = diff.dot(forward_2d);
 		//let dot = forward_2d.dot(diff);
-		if dot < 0.{ continue;} // ball behind the player
+		if dot < -1.{ continue;} // ball behind the player
 		let diff_norm = diff.normalize_or_zero();
 		let angle = forward_2d.angle_to(diff_norm).abs();
 		
@@ -180,7 +179,7 @@ let mut candidates:Vec<_> = players.iter().filter_map(|(transform, entity)|{
 			if ball_motion.dribble_draw == Vec3::ZERO{
 				let forward_project = -PLAYER_OPTIMAL_DRIBBLE_DISTANCE * forward_2d;
 				let draw_location = Vec3::new(forward_project.x, 0., forward_project.y) + transform.translation();
-				ball_motion.dribble_draw = (draw_location - ball_transform.translation).normalize() * 4.0;
+				ball_motion.dribble_draw = (draw_location - ball_transform.translation).normalize() * 7.0;
 				ball_motion.last_touch = Some(entity);
 			}
 			//info!("draw {}", ball_motion.dribble_draw);
