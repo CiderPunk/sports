@@ -1,9 +1,6 @@
-
-use rand::Rng; 
-use rand::seq::SliceRandom;
 use std::{f32::consts::PI, time::Duration};
 
-use bevy::{color::palettes::css::{BLACK, BLUE, BROWN, CORAL, DARK_CYAN, GREEN, GREY, MAGENTA, PINK, PURPLE, RED, WHITE, YELLOW}, gltf::GltfMesh, light::NotShadowCaster, math::VectorSpace, prelude::*, world_serialization::WorldInstanceReady};
+use bevy::{color::palettes::css::{BLACK, BLUE, BROWN, CORAL, DARK_CYAN, GREEN, GREY, MAGENTA, PINK, PURPLE, RED, WHITE, YELLOW}, gltf::GltfMesh, light::NotShadowCaster, prelude::*, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
 
 use bevy_prng::WyRand;
@@ -13,7 +10,7 @@ use bevy_rand::global::GlobalRng;
 use rand::seq::IndexedRandom;
 use strum::VariantArray;
 
-use crate::{assets::AssetLoadState, ball::BALL_RADIUS, colliders::CollisionCylinder, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, kit::{KitAssets, KitColour, KitConfiguration, KitFactory, KitPattern}};
+use crate::{assets::AssetLoadState, colliders::CollisionCylinder, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_TURN_SPEED: f32 = 3.0;
@@ -221,22 +218,18 @@ fn init_player_skin(
 	event:On<WorldInstanceReady>,
 	children:Query<&Children>,
 	player_query:Query<&Player>,
-	mut material_query:Query<Entity, With<MeshMaterial3d<StandardMaterial>>>,
-	mut kit_factory:ResMut<KitFactory>,
+	material_query:Query<Entity, With<MeshMaterial3d<StandardMaterial>>>,
+	mut kit_generator:KitGenerator,
 	mut materials: ResMut<Assets<StandardMaterial>>,
 	player_assets: Res<PlayerAssets>,
-	kit_assets:Res<KitAssets>,
-	mut images: ResMut<Assets<Image>>,
 	mut commands:Commands,
-
-  mut rng: Single<&mut WyRand, With<GlobalRng>>
 ){
 	info!("init skin");
 	for child in children.iter_descendants(event.entity){
 		if let Ok(mesh_entity) = material_query.get(child) 
 			&& let Ok(player) = player_query.get(event.entity) {
 
-			let texture_handle = kit_factory.get_or_generate(player.kit, &kit_assets, images, rng);
+			let texture_handle = kit_generator.get_or_generate(player.kit);
 
 			let material_handle = 
 				if let Some(base_material) = materials.get(player_assets.player_material.id()){
@@ -249,10 +242,7 @@ fn init_player_skin(
 						..default()
 					})
 				};
-
 			commands.entity(mesh_entity).insert(MeshMaterial3d(material_handle));
-
-
 			break;
 		}
 	}

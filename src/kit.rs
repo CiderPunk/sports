@@ -1,4 +1,4 @@
-use bevy::{platform::collections::HashMap, prelude::*, reflect::TypeData};
+use bevy::{ecs::system::SystemParam, platform::collections::HashMap, prelude::*, reflect::TypeData};
 use bevy_asset_loader::prelude::*;
 use bevy_prng::WyRand;
 use bevy_rand::global::GlobalRng;
@@ -14,10 +14,13 @@ impl Plugin for KitPlugin{
 				LoadingStateConfig::new(AssetLoadState::Startup)
 				.load_collection::<KitAssets>(),
 			)
-			.init_resource::<KitFactory>()
+			.init_resource::<KitCache>()
 			;
 	}
 }
+
+
+
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct KitColour(pub [u8;4]);
@@ -55,9 +58,6 @@ pub enum KitPattern{
 	Quatered, 
 }
 
-
-
-
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct KitConfiguration{
 	pub pattern:KitPattern,
@@ -68,32 +68,38 @@ pub struct KitConfiguration{
 }
 
 #[derive(Resource, Default)]
-pub struct KitFactory{
-	cache: HashMap<KitConfiguration, Handle<Image>>,
+pub struct KitCache(HashMap<KitConfiguration, Handle<Image>>);
+
+
+#[derive(SystemParam)]
+pub struct KitGenerator<'w, 's> {
+	cache: ResMut<'w, KitCache>,
+	kit_assets: Res<'w, KitAssets>,
+	images: ResMut<'w, Assets<Image>>,
+	rng: Single<'w, 's, &'static mut WyRand, With<GlobalRng>>,
 }
 
-impl KitFactory{
+impl<'w,'s> KitGenerator<'w,'s>{
 	pub fn get_or_generate(
 		&mut self, 
 		config: KitConfiguration,
-		kit_assets:&Res<KitAssets>,
-		mut images: ResMut<Assets<Image>>, 
-		mut rng: Single<&mut WyRand, With<GlobalRng>>,
 	) ->Handle<Image>{
 
-		if let Some(texture) = self.cache.get(&config){
+		if let Some(texture) = self.cache.0.get(&config){
 			return texture.clone();
 		};
 		info!("Generating kit");
 
+		let rng_mut = &mut **self.rng;
+		
 		let kit_image_id = match config.pattern{
-				KitPattern::Solid => kit_assets.default_kit.id(),
-				KitPattern::Striped => kit_assets.kit_striped.id(),
-				KitPattern::Quatered => kit_assets.kit_quatered.id(),
+			KitPattern::Solid => self.kit_assets.default_kit.id(),
+			KitPattern::Striped => self.kit_assets.kit_striped.id(),
+			KitPattern::Quatered => self.kit_assets.kit_quatered.id(),
 		};
 
-		let mut skin_texture = images.get(kit_assets.skins.choose(&mut rng).expect("failed picking a random skin").id()).expect("Missing player skin texture").clone();
-		let kit_image = images.get(kit_image_id).expect("Missing kit texture").clone();
+		let mut skin_texture = self.images.get(self.kit_assets.skins.choose(rng_mut).expect("failed picking a random skin").id()).expect("Missing player skin texture").clone();
+		let kit_image = self.images.get(kit_image_id).expect("Missing kit texture").clone();
 	
 	 	let mut skin_data = skin_texture.data.take().expect("Skin texture lacks raw data bytes");   
 		let kit_data = kit_image.data.as_ref().expect("Kit texture lacks raw data");
@@ -114,8 +120,8 @@ impl KitFactory{
 			}
 		}
 		skin_texture.data = Some(skin_data);
-		let handle = images.add(skin_texture);
-		self.cache.insert(config, handle.clone());
+		let handle = self.images.add(skin_texture);
+		self.cache.0.insert(config, handle.clone());
 
 		info!("Kit complete");
 		handle
