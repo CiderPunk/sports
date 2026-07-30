@@ -10,7 +10,7 @@ use bevy_rand::global::GlobalRng;
 use rand::seq::IndexedRandom;
 use strum::VariantArray;
 
-use crate::{assets::AssetLoadState, colliders::CollisionCylinder, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}};
+use crate::{animated_mesh::AnimationManager, assets::AssetLoadState, colliders::CollisionCylinder, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_TURN_SPEED: f32 = 3.0;
@@ -106,25 +106,11 @@ fn init_markers(
 
 
 fn init_player(
-	mut commands: Commands,
-	gltfs: Res<Assets<Gltf>>,
-	player_assets:Res<PlayerAssets>,
-	mut graphs: ResMut<Assets<AnimationGraph>>,
-
+	mut anim_manager:AnimationManager<Player>,
+	player_assets: Res<PlayerAssets>,
 ){
 	info!("Initialize player animations");
-	let player = gltfs.get(&player_assets.player_gltf).expect("Missing player asset");
-	//build animatiopn graph
-	let (graph, node_indices) = AnimationGraph::from_clips([
-		player.named_animations["idle"].clone(),
-		player.named_animations["run"].clone(),
-		player.named_animations["sprint"].clone(),
-	]);
-	let graph_handle = graphs.add(graph);
-	commands.insert_resource(PlayerAnimations {
-		animations: node_indices,
-		graph_handle, 
-	});
+	anim_manager.create_graph(player_assets.player_gltf.clone(), &["idle", "run", "sprint"]);
 }
 
 fn spawn_players(
@@ -252,23 +238,9 @@ fn init_player_skin(
 
 fn init_player_animations(
 	event:On<WorldInstanceReady>,
-	children_query: Query<&Children>,
-	mut anim_player_query: Query<&mut AnimationPlayer>,
-	mut commands:Commands,
-	animations: Res<PlayerAnimations>,
+	mut anim_manager:AnimationManager<Player>,
 ){
-	for descendant in children_query.iter_descendants(event.entity) {
-		if let Ok(mut anim_player) = anim_player_query.get_mut(descendant) {
-			//info!("Foundanimation player");
-			let mut transitions = AnimationTransitions::new();
-			transitions.play(&mut anim_player, animations.animations[0], Duration::ZERO).repeat();
-			commands.entity(descendant)
-				.insert(AnimationGraphHandle(animations.graph_handle.clone()))
-				.insert(transitions);
-			commands.entity(event.entity).insert(Animator{ entity: descendant});
-			break;
-		}
-	}	
+	anim_manager.attach_animation(event.entity, 0);
 }
 
 #[derive(Component)]
@@ -285,7 +257,6 @@ impl Movement{
 		let vel_2d = self.direction * PLAYER_SPEED;
 		Vec3::new(vel_2d.x, 0.0, -vel_2d.y)
 	}
-
 }
 
 

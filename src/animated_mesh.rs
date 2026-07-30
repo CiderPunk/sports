@@ -29,7 +29,7 @@ pub struct AnimationManager<'w, 's, T:Component + 'static> {
 	pub graphs: ResMut<'w, Assets<AnimationGraph>>,
 	pub children_query: Query<'w, 's, &'static Children>,
 	pub anim_player_query: Query<'w, 's, &'static mut AnimationPlayer>,
-	pub anim_resource: Res<'w, MeshAnimations<T>>,
+	pub anim_resource: Option<Res<'w,  MeshAnimations<T>>>,
 	pub _marker: PhantomData<fn() -> T>,
 }
 
@@ -63,11 +63,14 @@ impl<'w, 's, T:Component +'static> AnimationManager<'w, 's, T> {
 			root_entity: Entity,
 			start_index: usize,
 	) {
+
+		let animations = self.anim_resource.as_ref().unwrap_or_else(||{ panic!("missing animation resources") });
+
 			for descendant in self.children_query.iter_descendants(root_entity) {
 					if let Ok(mut anim_player) = self.anim_player_query.get_mut(descendant) {
 							let mut transitions = AnimationTransitions::new();
 
-							let anim = self.anim_resource.animations.get(start_index).expect("Out of bounds start animation index");
+							let anim = animations.animations.get(start_index).expect("Out of bounds start animation index");
 
 							transitions
 									.play(
@@ -78,7 +81,7 @@ impl<'w, 's, T:Component +'static> AnimationManager<'w, 's, T> {
 									.repeat();
 
 							self.commands.entity(descendant).insert((
-									AnimationGraphHandle(self.anim_resource.graph_handle.clone()),
+									AnimationGraphHandle(animations.graph_handle.clone()),
 									transitions,
 							));
 
