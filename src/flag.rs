@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_asset_loader::prelude::*;
 
-use crate::animated_mesh::MeshAnimations;
+use crate::animation_manager::MeshAnimations;
 
 
 pub struct FlagPlugin;

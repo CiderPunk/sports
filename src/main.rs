@@ -13,14 +13,14 @@ mod tests;
 mod game_gizmos;
 mod kit;
 mod flag;
-mod animated_mesh;
+mod animation_manager;
 use std::f32::consts::PI;
 
 use bevy::{color::palettes::css::WHITE, core_pipeline::tonemapping::Tonemapping, light::{ CascadeShadowConfigBuilder, DirectionalLightShadowMap}, prelude::*};
 use bevy_enhanced_input::EnhancedInputPlugin;
 use bevy_prng::WyRand;
 use bevy_rand::plugin::EntropyPlugin;
-use crate::{animated_mesh::AnimatedMeshPlugin, assets::AssetsPlugin, ball::BallPlugin, flag::FlagPlugin, game_camera::GameCameraPlugin, game_control::GameControlPlugin, game_gizmos::GameGizmosPlugin, game_schedule::GameSchedulePlugin, game_state::GameStatePlugin, kit::KitPlugin, pitch::PitchPlugin, player::PlayerPlugin};
+use crate::{animation_manager::AnimatedMeshPlugin, assets::AssetsPlugin, ball::BallPlugin, flag::FlagPlugin, game_camera::GameCameraPlugin, game_control::GameControlPlugin, game_gizmos::GameGizmosPlugin, game_schedule::GameSchedulePlugin, game_state::GameStatePlugin, kit::KitPlugin, pitch::PitchPlugin, player::PlayerPlugin};
 
 const APP_NAME: &str = "Sportsball";
 fn main() {

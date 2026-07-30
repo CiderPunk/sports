@@ -10,7 +10,7 @@ use bevy_rand::global::GlobalRng;
 use rand::seq::IndexedRandom;
 use strum::VariantArray;
 
-use crate::{animated_mesh::AnimationManager, assets::AssetLoadState, colliders::CollisionCylinder, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}};
+use crate::{animation_manager::AnimationManager, assets::AssetLoadState, colliders::CollisionCylinder, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_TURN_SPEED: f32 = 3.0;
@@ -283,19 +283,20 @@ fn update_active_marker(
 
 
 fn animate_player(
-	mut query:Query<(&Movement, &Animator), With<Player>>,
-	mut animator_query:Query<(&mut AnimationPlayer, &mut AnimationTransitions)>,
-	animations:Res<PlayerAnimations>,
+	query:Query<(&Movement, Entity), With<Player>>,
+	//mut animator_query:Query<(&mut AnimationPlayer, &mut AnimationTransitions)>,
+	mut animation_manager:AnimationManager<Player>,
 ){
-	for (movement, animator) in query{
-		let Ok((mut player, mut transition)) = animator_query.get_mut(animator.entity) else { continue; };
+	for (movement, entity) in query{
+		//let Ok((mut player, mut transition)) = animator_query.get_mut(animator.entity) else { continue; };
 		if movement.direction == Vec2::ZERO{
-			if transition.get_main_animation() != Some(animations.animations[0]){
-				transition.play(&mut player, animations.animations[0], Duration::from_secs_f32(0.2)).repeat().set_speed(1.);
-			}
+			animation_manager.set_animation(entity, 0, 0.2, 1.0, true);
 		}
 		else{
+			animation_manager.set_animation(entity, 2, 0.2, movement.direction.length().clamp(0.1,1.0), true);
 
+
+			/*
 			if let Some(active_animation) = player.animation_mut(animations.animations[2]){
 				active_animation.set_speed(movement.direction.length().clamp(0.1,1.0));
 			}
@@ -303,6 +304,9 @@ fn animate_player(
 			if transition.get_main_animation() != Some(animations.animations[2]){
 				transition.play(&mut player, animations.animations[2], Duration::from_secs_f32(0.1)).repeat();
 			}
+			 */
+
+
 		}
 	}
 }
