@@ -2,10 +2,16 @@ use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use std::{marker::PhantomData, time::Duration};
 
-pub struct AnimatedMeshPlugin;
+pub struct AnimationManagerPlugin;
 
-impl Plugin for AnimatedMeshPlugin {
-	fn build(&self, _app: &mut App) {}
+impl Plugin for AnimationManagerPlugin {
+	fn build(&self, app: &mut App) {
+		//app.add_systems(Update, restart_visible_animations)
+		;
+		
+
+
+	}
 }
 
 #[derive(Component, Debug)]
@@ -14,12 +20,22 @@ pub struct Animator {
 }
 
 impl Animator{
-	
-
-
 }
 
+fn restart_visible_animations(
+ 	mut query: Query<(&mut AnimationTransitions, &mut AnimationPlayer, &ViewVisibility), Changed<ViewVisibility>>,
+){
+	for (transitions, mut player, view_visibility) in query.iter_mut(){
 
+		if view_visibility.get() 
+			&& let Some(anim) =  transitions.get_main_animation() 
+			&& let Some(active_animation) = player.animation_mut(anim){
+				
+				info!("Restarting animation");
+				active_animation.resume();
+		}
+	}
+}
 
 #[derive(Resource)]
 pub struct MeshAnimations<T: Component> {
@@ -28,8 +44,7 @@ pub struct MeshAnimations<T: Component> {
 	pub _marker: PhantomData<T>,
 }
 
-// FIX: Completely strip explicit lifetimes from the reference types inside the Queries.
-// Let Bevy's macro automatically handle the mapping of 'w and 's.
+
 #[derive(SystemParam)]
 pub struct AnimationManager<'w, 's, T:Component + 'static> {
 	pub commands: Commands<'w, 's>,
@@ -38,8 +53,6 @@ pub struct AnimationManager<'w, 's, T:Component + 'static> {
 	pub anim_resource: Option<Res<'w,  MeshAnimations<T>>>,
 	pub children_query: Query<'w, 's, &'static Children>,
 	pub animator_query:Query<'w, 's, &'static Animator>,
-
-
 	pub anim_player_queries: ParamSet<'w, 's, (
 	 	Query<'w, 's, &'static mut AnimationPlayer>,
 		Query<'w, 's, (&'static mut AnimationPlayer, &'static mut AnimationTransitions)>,
@@ -111,9 +124,8 @@ impl<'w, 's, T:Component +'static> AnimationManager<'w, 's, T> {
 				if transition.get_main_animation() != Some(*anim){
 					transition.play(&mut player, *anim, Duration::from_secs_f32(transition_time)).set_speed(speed).repeat();
 				}
-				else if let Some(active_animation) = player.animation_mut(animations.animations[2]){
+				else if let Some(active_animation) = player.animation_mut(*anim){
 					active_animation.set_speed(speed);
-				
 				}
 			};
 		};

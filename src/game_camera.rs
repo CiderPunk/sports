@@ -5,8 +5,8 @@ use bevy::{core_pipeline::tonemapping::Tonemapping, prelude::*};
 use crate::ball::Ball;
 
 
-//const CAMERA_OFFSET:Vec3 = Vec3::new(0.,140.,120.);
-const CAMERA_OFFSET:Vec3 = Vec3::new(0.,60.,60.);
+const CAMERA_OFFSET:Vec3 = Vec3::new(0.,100.,80.);
+//const CAMERA_OFFSET:Vec3 = Vec3::new(0.,60.,60.);
 
 pub struct GameCameraPlugin;
 impl Plugin for GameCameraPlugin{

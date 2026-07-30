@@ -46,30 +46,12 @@ impl Plugin for PlayerPlugin{
 }
 
 
-#[derive(Component, Clone, Copy, Debug)]
-pub struct InfluenceZone{
-	pub static_radius:f32,
-	pub draw_radius:f32,
-}
-
-#[derive(Resource)]
-struct PlayerAnimations {
-	animations: Vec<AnimationNodeIndex>,
-	graph_handle: Handle<AnimationGraph>,
-		//scene: Handle<WorldAsset>,
-}  
-
 #[derive(Component,Debug)]
 #[require(Movement)]
 pub struct Player{
 	kit:KitConfiguration,
 }
 
-
-#[derive(Component, Debug)]
-pub struct Animator{
-	entity:Entity,
-}
 
 #[derive(AssetCollection, Resource, Default)]
 pub struct PlayerAssets {
