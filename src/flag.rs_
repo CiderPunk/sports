@@ -1,0 +1,39 @@
+use bevy::prelude::*;
+use bevy_asset_loader::prelude::*;
+use crate::{animation_manager::AnimationManager, assets::AssetLoadState, game_state::GameState};
+
+pub struct FlagPlugin;
+impl Plugin for FlagPlugin{
+	fn build(&self, app: &mut bevy::app::App) {
+		app
+			.configure_loading_state(
+				LoadingStateConfig::new(AssetLoadState::Startup)
+				.load_collection::<FlagAssets>(),
+			)
+			.add_systems(OnEnter(GameState::Initialize), init_animations)
+			.add_systems(OnEnter(GameState::Playing), spawn_flags);
+			;
+	}
+}
+
+#[derive(Component)]
+pub struct Flag;
+
+
+fn init_animations(
+	mut anim_manager:AnimationManager<Flag>,
+	flag_assets: Res<FlagAssets>,
+){
+	info!("Initialize player animations");
+	anim_manager.create_graph(flag_assets.flag_gltf.clone(), &["wave"]);
+}
+
+
+#[derive(AssetCollection, Resource)]
+pub struct FlagAssets {
+  #[asset(path = "flag.glb#Scene0")]
+  pub flag_scene: Handle<WorldAsset>,
+	#[asset(path = "flag.glb")]
+	pub flag_gltf: Handle<Gltf>,
+}
+

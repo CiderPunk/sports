@@ -1,9 +1,9 @@
 use std::f32::consts::PI;
 
-use bevy::{asset::RenderAssetUsages, color::palettes::css::PINK, gltf::GltfMesh, light::{NotShadowCaster, NotShadowReceiver}, math::VectorSpace, mesh::Indices, prelude::*, transform};
+use bevy::{asset::RenderAssetUsages, color::palettes::css::PINK, gltf::GltfMesh, light::{NotShadowCaster, NotShadowReceiver}, math::VectorSpace, mesh::Indices, prelude::*, transform, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
 
-use crate::{assets::AssetLoadState, game_state::GameState, get_gltf_primative};
+use crate::{animation_manager::AnimationManager, assets::AssetLoadState, game_state::GameState, get_gltf_primative};
 
 const LINE_FLOAT_HEIGHT: f32 = 0.05;
 
@@ -22,8 +22,8 @@ impl Plugin for PitchPlugin{
 				LoadingStateConfig::new(AssetLoadState::Startup)
 				.load_collection::<PitchAssets>(),
 			)			
-			.add_systems(OnEnter(GameState::Initialize), (modify_materials, init_pitch_models))
-			.add_systems(OnEnter(GameState::Playing), (spawn_pitch, spawn_pitch_models));
+			.add_systems(OnEnter(GameState::Initialize), (modify_materials, init_pitch_models, init_animations))
+			.add_systems(OnEnter(GameState::Playing), (spawn_pitch, spawn_pitch_models, spawn_corner_flags));
 	}
 }
 
@@ -48,8 +48,23 @@ pub struct PitchAssets {
 	#[asset(path = "goal.glb#Material1/std")]
 	pub net_material: Handle<StandardMaterial>,
 
+  #[asset(path = "flag.glb#Scene0")]
+  pub flag_scene: Handle<WorldAsset>,
+	#[asset(path = "flag.glb")]
+	pub flag_gltf: Handle<Gltf>,
 }
 
+#[derive(Component)]
+pub struct Flag;
+
+
+fn init_animations(
+	mut anim_manager:AnimationManager<Flag>,
+	pitch_assets: Res<PitchAssets>,
+){
+	info!("Initialize player animations");
+	anim_manager.create_graph(pitch_assets.flag_gltf.clone(), &["wave"]);
+}
 
 
 #[derive(Resource)]
@@ -142,7 +157,6 @@ fn spot(size:f32, material:Handle<StandardMaterial>) -> impl Scene{
 		Mesh3d(asset_value(Plane3d::new(Vec3::Y, Vec2::new(0.5 * size, 0.5 * size))))
 		MeshMaterial3d<StandardMaterial>(material)
 		NotShadowCaster 
-
 	}
 }
 
@@ -259,18 +273,48 @@ fn modify_materials(
 }
 
 
+fn spawn_corner_flags(
+	mut commands:Commands,
+	pitch_assets:Res<PitchAssets>,
+	pitch_config:Res<PitchConfiguration>,
+){
+	let half_pitch_length = pitch_config.length * 0.5;
+	let half_pitch_width = pitch_config.width * 0.5;
+
+	let corners = [
+		Vec3::new(-half_pitch_width, 0., half_pitch_length),
+		Vec3::new(half_pitch_width, 0., half_pitch_length),
+		Vec3::new(-half_pitch_width, 0., -half_pitch_length),
+		Vec3::new(half_pitch_width, 0., -half_pitch_length),
+	];
+
+	corners.iter().for_each(|corner|{
+		commands.spawn((
+			Flag, 
+			Transform::from_translation(*corner),
+			WorldAssetRoot(pitch_assets.flag_scene.clone()),
+		))
+		.observe(init_flag_animations);
+	});
+}
+
+
+
+fn init_flag_animations(
+	event:On<WorldInstanceReady>,
+	mut anim_manager:AnimationManager<Flag>,
+){
+	anim_manager.attach_animation(event.entity, 0);
+}
+
 fn spawn_pitch_models(
 	mut commands:Commands,
 	pitch_models:Res<PitchModels>,
 	pitch_config:Res<PitchConfiguration>,
 ){
-
-
 	let half_pitch_length = pitch_config.length * 0.5;
-
-	let lower_goal_transform = Transform::from_xyz(0.,0., half_pitch_length).with_rotation(Quat::from_axis_angle(Vec3::Y, PI));
+	let half_pitch_width = pitch_config.width * 0.5;
 	commands.spawn_scene_list(
-
 		bsn_list![
 			(
 				Transform{
@@ -284,6 +328,10 @@ fn spawn_pitch_models(
 				goal_model(&pitch_models, &pitch_config)
 			)
 		]);
+
+
+
+
 }
 
 

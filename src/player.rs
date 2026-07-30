@@ -1,9 +1,6 @@
-
-use rand::Rng; 
-use rand::seq::SliceRandom;
 use std::{f32::consts::PI, time::Duration};
 
-use bevy::{color::palettes::css::{BLACK, BLUE, BROWN, CORAL, DARK_CYAN, GREEN, GREY, MAGENTA, PINK, PURPLE, RED, WHITE, YELLOW}, gltf::GltfMesh, light::NotShadowCaster, math::VectorSpace, prelude::*, world_serialization::WorldInstanceReady};
+use bevy::{color::palettes::css::{BLACK, BLUE, BROWN, CORAL, DARK_CYAN, GREEN, GREY, MAGENTA, PINK, PURPLE, RED, WHITE, YELLOW}, gltf::GltfMesh, light::NotShadowCaster, prelude::*, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
 
 use bevy_prng::WyRand;
@@ -13,7 +10,7 @@ use bevy_rand::global::GlobalRng;
 use rand::seq::IndexedRandom;
 use strum::VariantArray;
 
-use crate::{assets::AssetLoadState, ball::BALL_RADIUS, colliders::CollisionCylinder, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, kit::{KitAssets, KitColour, KitConfiguration, KitFactory, KitPattern}};
+use crate::{animation_manager::AnimationManager, assets::AssetLoadState, colliders::CollisionCylinder, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_TURN_SPEED: f32 = 3.0;
@@ -49,30 +46,12 @@ impl Plugin for PlayerPlugin{
 }
 
 
-#[derive(Component, Clone, Copy, Debug)]
-pub struct InfluenceZone{
-	pub static_radius:f32,
-	pub draw_radius:f32,
-}
-
-#[derive(Resource)]
-struct PlayerAnimations {
-	animations: Vec<AnimationNodeIndex>,
-	graph_handle: Handle<AnimationGraph>,
-		//scene: Handle<WorldAsset>,
-}  
-
 #[derive(Component,Debug)]
 #[require(Movement)]
 pub struct Player{
 	kit:KitConfiguration,
 }
 
-
-#[derive(Component, Debug)]
-pub struct Animator{
-	entity:Entity,
-}
 
 #[derive(AssetCollection, Resource, Default)]
 pub struct PlayerAssets {
@@ -109,25 +88,11 @@ fn init_markers(
 
 
 fn init_player(
-	mut commands: Commands,
-	gltfs: Res<Assets<Gltf>>,
-	player_assets:Res<PlayerAssets>,
-	mut graphs: ResMut<Assets<AnimationGraph>>,
-
+	mut anim_manager:AnimationManager<Player>,
+	player_assets: Res<PlayerAssets>,
 ){
 	info!("Initialize player animations");
-	let player = gltfs.get(&player_assets.player_gltf).expect("Missing player asset");
-	//build animatiopn graph
-	let (graph, node_indices) = AnimationGraph::from_clips([
-		player.named_animations["idle"].clone(),
-		player.named_animations["run"].clone(),
-		player.named_animations["sprint"].clone(),
-	]);
-	let graph_handle = graphs.add(graph);
-	commands.insert_resource(PlayerAnimations {
-		animations: node_indices,
-		graph_handle, 
-	});
+	anim_manager.create_graph(player_assets.player_gltf.clone(), &["idle", "run", "sprint"]);
 }
 
 fn spawn_players(
@@ -221,22 +186,18 @@ fn init_player_skin(
 	event:On<WorldInstanceReady>,
 	children:Query<&Children>,
 	player_query:Query<&Player>,
-	mut material_query:Query<Entity, With<MeshMaterial3d<StandardMaterial>>>,
-	mut kit_factory:ResMut<KitFactory>,
+	material_query:Query<Entity, With<MeshMaterial3d<StandardMaterial>>>,
+	mut kit_generator:KitGenerator,
 	mut materials: ResMut<Assets<StandardMaterial>>,
 	player_assets: Res<PlayerAssets>,
-	kit_assets:Res<KitAssets>,
-	mut images: ResMut<Assets<Image>>,
 	mut commands:Commands,
-
-  mut rng: Single<&mut WyRand, With<GlobalRng>>
 ){
 	info!("init skin");
 	for child in children.iter_descendants(event.entity){
 		if let Ok(mesh_entity) = material_query.get(child) 
 			&& let Ok(player) = player_query.get(event.entity) {
 
-			let texture_handle = kit_factory.get_or_generate(player.kit, &kit_assets, images, rng);
+			let texture_handle = kit_generator.get_or_generate(player.kit);
 
 			let material_handle = 
 				if let Some(base_material) = materials.get(player_assets.player_material.id()){
@@ -249,10 +210,7 @@ fn init_player_skin(
 						..default()
 					})
 				};
-
 			commands.entity(mesh_entity).insert(MeshMaterial3d(material_handle));
-
-
 			break;
 		}
 	}
@@ -262,23 +220,9 @@ fn init_player_skin(
 
 fn init_player_animations(
 	event:On<WorldInstanceReady>,
-	children_query: Query<&Children>,
-	mut anim_player_query: Query<&mut AnimationPlayer>,
-	mut commands:Commands,
-	animations: Res<PlayerAnimations>,
+	mut anim_manager:AnimationManager<Player>,
 ){
-	for descendant in children_query.iter_descendants(event.entity) {
-		if let Ok(mut anim_player) = anim_player_query.get_mut(descendant) {
-			//info!("Foundanimation player");
-			let mut transitions = AnimationTransitions::new();
-			transitions.play(&mut anim_player, animations.animations[0], Duration::ZERO).repeat();
-			commands.entity(descendant)
-				.insert(AnimationGraphHandle(animations.graph_handle.clone()))
-				.insert(transitions);
-			commands.entity(event.entity).insert(Animator{ entity: descendant});
-			break;
-		}
-	}	
+	anim_manager.attach_animation(event.entity, 0);
 }
 
 #[derive(Component)]
@@ -295,7 +239,6 @@ impl Movement{
 		let vel_2d = self.direction * PLAYER_SPEED;
 		Vec3::new(vel_2d.x, 0.0, -vel_2d.y)
 	}
-
 }
 
 
@@ -322,19 +265,20 @@ fn update_active_marker(
 
 
 fn animate_player(
-	mut query:Query<(&Movement, &Animator), With<Player>>,
-	mut animator_query:Query<(&mut AnimationPlayer, &mut AnimationTransitions)>,
-	animations:Res<PlayerAnimations>,
+	query:Query<(&Movement, Entity), With<Player>>,
+	//mut animator_query:Query<(&mut AnimationPlayer, &mut AnimationTransitions)>,
+	mut animation_manager:AnimationManager<Player>,
 ){
-	for (movement, animator) in query{
-		let Ok((mut player, mut transition)) = animator_query.get_mut(animator.entity) else { continue; };
+	for (movement, entity) in query{
+		//let Ok((mut player, mut transition)) = animator_query.get_mut(animator.entity) else { continue; };
 		if movement.direction == Vec2::ZERO{
-			if transition.get_main_animation() != Some(animations.animations[0]){
-				transition.play(&mut player, animations.animations[0], Duration::from_secs_f32(0.2)).repeat().set_speed(1.);
-			}
+			animation_manager.set_animation(entity, 0, 0.2, 1.0, true);
 		}
 		else{
+			animation_manager.set_animation(entity, 2, 0.2, movement.direction.length().clamp(0.1,1.0), true);
 
+
+			/*
 			if let Some(active_animation) = player.animation_mut(animations.animations[2]){
 				active_animation.set_speed(movement.direction.length().clamp(0.1,1.0));
 			}
@@ -342,6 +286,9 @@ fn animate_player(
 			if transition.get_main_animation() != Some(animations.animations[2]){
 				transition.play(&mut player, animations.animations[2], Duration::from_secs_f32(0.1)).repeat();
 			}
+			 */
+
+
 		}
 	}
 }
