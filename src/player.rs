@@ -133,6 +133,8 @@ let kit_colours = [BLACK, WHITE, RED, GREEN, BLUE, PURPLE, PINK, YELLOW, BROWN, 
 			WorldAssetRoot(player_assets.player_scene.clone()),
 			Transform::from_xyz((i as f32 * 3.) - 0.75, 0., -1.),
 			CollisionCylinder{ radius: PLAYER_COLLISION_RADIUS, height:PLAYER_HEIGHT },
+
+			/*
 			children![
 						(
 					Gizmo{
@@ -156,6 +158,7 @@ let kit_colours = [BLACK, WHITE, RED, GREEN, BLUE, PURPLE, PINK, YELLOW, BROWN, 
 					Transform::from_scale(Vec3::splat(PLAYER_OPTIMAL_DRIBBLE_DISTANCE)),
 				),
 			],
+			 */
 		))
 		.observe(init_player_animations)
 		.observe(init_player_skin)
@@ -188,7 +191,6 @@ fn init_player_skin(
 	player_query:Query<&Player>,
 	material_query:Query<Entity, With<MeshMaterial3d<StandardMaterial>>>,
 	mut kit_generator:KitGenerator,
-	mut materials: ResMut<Assets<StandardMaterial>>,
 	player_assets: Res<PlayerAssets>,
 	mut commands:Commands,
 ){
@@ -196,20 +198,8 @@ fn init_player_skin(
 	for child in children.iter_descendants(event.entity){
 		if let Ok(mesh_entity) = material_query.get(child) 
 			&& let Ok(player) = player_query.get(event.entity) {
-
-			let texture_handle = kit_generator.get_or_generate(player.kit);
-
-			let material_handle = 
-				if let Some(base_material) = materials.get(player_assets.player_material.id()){
-					let mut material = base_material.clone();
-						material.base_color_texture = Some(texture_handle.clone());
-						materials.add(material)
-				} else {
-					materials.add(StandardMaterial {
-						base_color_texture: Some(texture_handle.clone()),
-						..default()
-					})
-				};
+			let texture_handle = kit_generator.get_or_generate_kit(player.kit);
+			let material_handle = kit_generator.make_material(player_assets.player_material.clone(), texture_handle);
 			commands.entity(mesh_entity).insert(MeshMaterial3d(material_handle));
 			break;
 		}
