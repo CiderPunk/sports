@@ -33,6 +33,19 @@ struct Pass;
 pub struct GameControl;
 
 
+
+
+fn direction_input_stopped(
+	_:On<Complete<MovementInput>>,
+	query:Query<&mut Movement, With<ActivePlayer>>,
+){
+	//info!("Movement stopped");
+	for mut movement in query{
+		movement.direction = Vec2::ZERO;
+	}
+}
+
+
 fn direction_input_stopped(
 	_:On<Complete<MovementInput>>,
 	query:Query<&mut Movement, With<ActivePlayer>>,
@@ -68,7 +81,7 @@ fn spawn_controls(
 				DeadZone::default(),
 //				Scale::splat(100.0),
 				Bindings::spawn((Cardinal::wasd_keys(), Axial::left_stick(), Cardinal::dpad())),
-			)
+			),
 		]),
 	));
 
