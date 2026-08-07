@@ -8,3 +8,4 @@ linker = "rust-lld.exe"
 
 [alias]
 rw = "run --features watcher"
+rdb = "run --features bevy/debug"

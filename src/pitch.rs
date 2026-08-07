@@ -1,9 +1,9 @@
 use std::f32::consts::PI;
 
-use bevy::{asset::RenderAssetUsages, color::palettes::css::PINK, gltf::GltfMesh, light::{NotShadowCaster, NotShadowReceiver}, math::VectorSpace, mesh::Indices, prelude::*, transform, world_serialization::WorldInstanceReady};
+use bevy::{asset::RenderAssetUsages, color::palettes::css::{BLUE, PINK, RED, WHITE, YELLOW}, gltf::GltfMesh, light::{NotShadowCaster, NotShadowReceiver}, math::VectorSpace, mesh::Indices, prelude::*, transform, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
 
-use crate::{animation_manager::AnimationManager, assets::AssetLoadState, game_state::GameState, get_gltf_primative};
+use crate::{animation_manager::AnimationManager, assets::AssetLoadState, game_state::GameState, get_gltf_primative, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}};
 
 const LINE_FLOAT_HEIGHT: f32 = 0.05;
 
@@ -22,8 +22,8 @@ impl Plugin for PitchPlugin{
 				LoadingStateConfig::new(AssetLoadState::Startup)
 				.load_collection::<PitchAssets>(),
 			)			
-			.add_systems(OnEnter(GameState::Initialize), (modify_materials, init_pitch_models, init_animations))
-			.add_systems(OnEnter(GameState::Playing), (spawn_pitch, spawn_pitch_models, spawn_corner_flags));
+			.add_systems(OnEnter(GameState::Initialize), (modify_materials, init_pitch_models))
+			.add_systems(OnEnter(GameState::Playing), (spawn_pitch, spawn_pitch_models));
 	}
 }
 
@@ -41,29 +41,15 @@ pub struct PitchAssets {
 	pub line_material: Handle<StandardMaterial>,
 	#[asset(path = "pitch.glb#Material0/std")]
 	pub spot_material: Handle<StandardMaterial>,	
-  #[asset(path = "goal.glb")]
-	pub goal_gltf: Handle<Gltf>,
-	#[asset(path = "goal.glb#Material0/std")]
+  #[asset(path = "pitch_models.glb")]
+	pub pitch_models_gltf: Handle<Gltf>,
+	#[asset(path = "pitch_models.glb#Material1/std")]
 	pub goal_material: Handle<StandardMaterial>,
-	#[asset(path = "goal.glb#Material1/std")]
+	#[asset(path = "pitch_models.glb#Material2/std")]
 	pub net_material: Handle<StandardMaterial>,
+	#[asset(path = "pitch_models.glb#Material0/std")]
+	pub flag_material: Handle<StandardMaterial>,
 
-  #[asset(path = "flag.glb#Scene0")]
-  pub flag_scene: Handle<WorldAsset>,
-	#[asset(path = "flag.glb")]
-	pub flag_gltf: Handle<Gltf>,
-}
-
-#[derive(Component)]
-pub struct Flag;
-
-
-fn init_animations(
-	mut anim_manager:AnimationManager<Flag>,
-	pitch_assets: Res<PitchAssets>,
-){
-	info!("Initialize player animations");
-	anim_manager.create_graph(pitch_assets.flag_gltf.clone(), &["wave"]);
 }
 
 
@@ -74,6 +60,9 @@ pub struct PitchModels{
 	pub net:Handle<Mesh>,
 	pub goal_material:Handle<StandardMaterial>,
 	pub net_material:Handle<StandardMaterial>,
+	pub flag_material:Handle<StandardMaterial>,
+	pub flag:Handle<Mesh>,
+	pub flag_pole:Handle<Mesh>,
 }
 
 fn init_pitch_models(
@@ -82,11 +71,21 @@ fn init_pitch_models(
   gltf_meshes: Res<Assets<GltfMesh>>,
 	mut commands:Commands,
 ) -> Result<()> {
-	let models = gltf_assets.get(&pitch_assets.goal_gltf).ok_or("Missing pitch models")?;
+	let models = gltf_assets.get(&pitch_assets.pitch_models_gltf).ok_or("Missing pitch models")?;
 	let goal_left = get_gltf_primative!(gltf_meshes, models, "goal-left").mesh.clone();
 	let goal_right = get_gltf_primative!(gltf_meshes, models, "goal-right").mesh.clone();
 	let net = get_gltf_primative!(gltf_meshes, models, "net").mesh.clone();
-	commands.insert_resource(PitchModels{ goal_left, goal_right, net, goal_material:pitch_assets.goal_material.clone(), net_material:pitch_assets.net_material.clone() });
+	let flag = get_gltf_primative!(gltf_meshes, models, "flag").mesh.clone();
+	let flag_pole = get_gltf_primative!(gltf_meshes, models, "flagpole").mesh.clone();
+	commands.insert_resource(
+		PitchModels{ 
+			goal_left, goal_right, net, 
+			goal_material:pitch_assets.goal_material.clone(), 
+			net_material:pitch_assets.net_material.clone(), 
+			flag,
+			flag_pole,
+			flag_material:pitch_assets.flag_material.clone(),
+		});
 	Ok(())
 }
 
@@ -273,44 +272,12 @@ fn modify_materials(
 }
 
 
-fn spawn_corner_flags(
-	mut commands:Commands,
-	pitch_assets:Res<PitchAssets>,
-	pitch_config:Res<PitchConfiguration>,
-){
-	let half_pitch_length = pitch_config.length * 0.5;
-	let half_pitch_width = pitch_config.width * 0.5;
-
-	let corners = [
-		Vec3::new(-half_pitch_width, 0., half_pitch_length),
-		Vec3::new(half_pitch_width, 0., half_pitch_length),
-		Vec3::new(-half_pitch_width, 0., -half_pitch_length),
-		Vec3::new(half_pitch_width, 0., -half_pitch_length),
-	];
-
-	corners.iter().for_each(|corner|{
-		commands.spawn((
-			Flag, 
-			Transform::from_translation(*corner),
-			WorldAssetRoot(pitch_assets.flag_scene.clone()),
-		))
-		.observe(init_flag_animations);
-	});
-}
-
-
-
-fn init_flag_animations(
-	event:On<WorldInstanceReady>,
-	mut anim_manager:AnimationManager<Flag>,
-){
-	anim_manager.attach_animation(event.entity, 0);
-}
 
 fn spawn_pitch_models(
 	mut commands:Commands,
 	pitch_models:Res<PitchModels>,
 	pitch_config:Res<PitchConfiguration>,
+	mut kit_gen:KitGenerator,
 ){
 	let half_pitch_length = pitch_config.length * 0.5;
 	let half_pitch_width = pitch_config.width * 0.5;
@@ -330,7 +297,42 @@ fn spawn_pitch_models(
 		]);
 
 
+	let corners = [
+		Vec3::new(-half_pitch_width, 0., half_pitch_length),
+		Vec3::new(half_pitch_width, 0., half_pitch_length),
+		Vec3::new(-half_pitch_width, 0., -half_pitch_length),
+		Vec3::new(half_pitch_width, 0., -half_pitch_length),
+	];
 
+
+		let kit = KitConfiguration{ 
+			pattern: KitPattern::Quatered,
+			colour_primary: KitColour::from_srgba(RED), 
+			colour_secondary:KitColour::from_srgba(WHITE),
+			colour_tertiary:KitColour::from_srgba(YELLOW),
+			shirt_number: 0, 
+		};
+
+
+	let flag_tex = kit_gen.get_or_generate_flag(kit);
+	let material_handle = kit_gen.make_material(pitch_models.flag_material.clone(), flag_tex);
+
+
+	corners.iter().for_each(|corner|{
+		commands.spawn((
+			Transform::from_translation(*corner),
+			Mesh3d(pitch_models.flag.clone()),
+			MeshMaterial3d(material_handle.clone()),
+			
+			children![
+				(
+					Transform::from_translation(Vec3::ZERO),
+					Mesh3d(pitch_models.flag_pole.clone()),
+					MeshMaterial3d(pitch_models.goal_material.clone()),
+				)
+			]
+		));
+	});
 
 }
 

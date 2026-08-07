@@ -22,6 +22,8 @@ pub struct Animator {
 impl Animator{
 }
 
+
+/*
 fn restart_visible_animations(
  	mut query: Query<(&mut AnimationTransitions, &mut AnimationPlayer, &ViewVisibility), Changed<ViewVisibility>>,
 ){
@@ -36,7 +38,7 @@ fn restart_visible_animations(
 		}
 	}
 }
-
+ */
 #[derive(Resource)]
 pub struct MeshAnimations<T: Component> {
 	pub animations: Vec<AnimationNodeIndex>,
