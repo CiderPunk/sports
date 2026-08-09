@@ -5,7 +5,7 @@ pub struct GameSchedulePlugin;
 impl Plugin for GameSchedulePlugin{
 	fn build(&self, app: &mut App) {
 		app
-			.configure_sets(Update, (
+			.configure_sets(FixedUpdate, (
 				GameSchedule::PlayerUpdates, 
 				GameSchedule::BallUpdate,
 				GameSchedule::MoveBall,

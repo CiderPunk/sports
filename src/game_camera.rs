@@ -49,9 +49,10 @@ fn spawn_camera(
 
 fn track_ball(
 	ball:Single<&GlobalTransform, With<Ball>>,
-	mut camera:Single<&mut Transform, With<BallCamera>>
+	mut camera:Single<&mut Transform, With<BallCamera>>,
+	time:Res<Time>,
 ){
-	camera.translation = Vec3::new(ball.translation().x, 0., ball.translation().z) + CAMERA_OFFSET;
+	camera.translation = camera.translation.lerp(Vec3::new(ball.translation().x, 0., ball.translation().z) + CAMERA_OFFSET, time.delta_secs() * 10.);
 }
 
 
