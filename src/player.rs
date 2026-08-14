@@ -10,7 +10,7 @@ use bevy_rand::global::GlobalRng;
 use rand::seq::IndexedRandom;
 use strum::VariantArray;
 
-use crate::{animation_manager::AnimationManager, assets::AssetLoadState, colliders::CollisionCylinder, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}};
+use crate::{animation_manager::AnimationManager, assets::AssetLoadState, colliders::{Collider, ColliderShape, CylinderTarget}, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_TURN_SPEED: f32 = 3.0;
@@ -132,8 +132,11 @@ let kit_colours = [BLACK, WHITE, RED, GREEN, BLUE, PURPLE, PINK, YELLOW, BROWN, 
 
 			PhysicalRotation(Quat::from_rotation_y(0.)),
 
-			CollisionCylinder{ radius: PLAYER_COLLISION_RADIUS, height:PLAYER_HEIGHT },
-
+			Collider{ shape: ColliderShape::Cylinder( CylinderTarget{ 
+				direction: Vec3::Y, 
+				radius: PLAYER_COLLISION_RADIUS, 
+				length: PLAYER_HEIGHT }) 
+			},
 			/*
 			children![
 						(
