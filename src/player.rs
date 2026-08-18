@@ -10,17 +10,14 @@ use bevy_rand::global::GlobalRng;
 use rand::seq::IndexedRandom;
 use strum::VariantArray;
 
-use crate::{animation_manager::AnimationManager, assets::AssetLoadState, colliders::{Collider, ColliderShape, CylinderTarget}, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}};
+use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}, physics::{Collider, ColliderShape, CylinderTarget, Velocity}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_TURN_SPEED: f32 = 3.0;
 const PLAYER_COLLISION_RADIUS:f32 = 0.4;
 pub const PLAYER_HEIGHT:f32 = 1.8;
-
 pub const PLAYER_MAX_DRIBBLE_DISTANCE:f32 = 1.4;
 pub const PLAYER_OPTIMAL_DRIBBLE_DISTANCE:f32 = 0.7;
-
-
 pub const PLAYER_DRIBBLE_ANGLE:f32 = PI * 0.25;
 //pub const PLAYER_DRAW_ANGLE:f32 = PI * 0.5;
 
@@ -34,16 +31,16 @@ impl Plugin for PlayerPlugin{
 				.load_collection::<PlayerAssets>(),
 			)
 			.add_systems(OnEnter(GameState::Initialize), (init_markers, init_player, spawn_players).chain())
-			//.add_observer(init_player_animations)
 			.add_systems(Update, (update_active_marker, animate_player))
-			.add_systems(FixedUpdate, move_player.in_set(GameSchedule::PlayerUpdates))
+			.add_systems(FixedUpdate, plan_movement.in_set(GameSchedule::PreMovement))
+			.add_systems(FixedUpdate, do_movement.in_set(GameSchedule::Movement))
 			;
 	}
 }
 
 
 #[derive(Component,Debug)]
-#[require(Movement)]
+#[require(PlayerMovement)]
 pub struct Player{
 	kit:KitConfiguration,
 }
@@ -125,11 +122,11 @@ let kit_colours = [BLACK, WHITE, RED, GREEN, BLUE, PURPLE, PINK, YELLOW, BROWN, 
 
 		let id = commands.spawn((
 			Player{ kit },
-			Movement{ direction: Vec2::ZERO, target_angle: PI * 1.5 },
+			PlayerMovement{ direction: Vec2::ZERO, target_angle: PI * 1.5 },
 			WorldAssetRoot(player_assets.player_scene.clone()),
 			Transform::default(),
 			PhysicalTranslation(Vec3::new((i as f32 * 3.) - 0.75, 0., -1.)),
-
+			Velocity{ direction: Dir3::Y, speed: 0. },
 			PhysicalRotation(Quat::from_rotation_y(0.)),
 
 			Collider{ shape: ColliderShape::Cylinder( CylinderTarget{ 
@@ -176,17 +173,17 @@ let kit_colours = [BLACK, WHITE, RED, GREEN, BLUE, PURPLE, PINK, YELLOW, BROWN, 
 	}
 	
 
-	//spawn active marker
-		commands.spawn((
-			ActiveMarker,
-			Mesh3d(player_assets.cone_marker.clone().expect("Cone marker not loaded")),
-			MeshMaterial3d(player_assets.marker_material.clone()),
-			Transform::from_xyz(0.,0.,0.,),
-			Visibility::Hidden,
-			NotShadowCaster,
-		));
+//spawn active marker
+	commands.spawn((
+		ActiveMarker,
+		Mesh3d(player_assets.cone_marker.clone().expect("Cone marker not loaded")),
+		MeshMaterial3d(player_assets.marker_material.clone()),
+		Transform::from_xyz(0.,0.,0.,),
+		Visibility::Hidden,
+		NotShadowCaster,
+	));
 
-	}
+}
 
 fn init_player_skin(
 	event:On<WorldInstanceReady>,
@@ -222,17 +219,19 @@ fn init_player_animations(
 pub struct ActivePlayer;
 
 #[derive(Component, Debug, Default)]
-pub struct Movement{
+pub struct PlayerMovement{
 	pub direction:Vec2,
 	target_angle:f32,
 }
 
-impl Movement{
+impl PlayerMovement{
 	pub fn velocity(&self)->Vec3{
 		let vel_2d = self.direction * PLAYER_SPEED;
-		Vec3::new(vel_2d.x, 0.0, -vel_2d.y)
+		Vec3::new(vel_2d.x, 0.0, vel_2d.y)
 	}
 }
+
+
 
 
 #[derive(Component)]
@@ -258,7 +257,7 @@ fn update_active_marker(
 
 
 fn animate_player(
-	query:Query<(&Movement, Entity), With<Player>>,
+	query:Query<(&PlayerMovement, Entity), With<Player>>,
 	//mut animator_query:Query<(&mut AnimationPlayer, &mut AnimationTransitions)>,
 	mut animation_manager:AnimationManager<Player>,
 ){
@@ -273,20 +272,36 @@ fn animate_player(
 	}
 }
 
-fn move_player(
-	query:Query<(&mut Movement, &mut PhysicalTranslation, &mut PhysicalRotation), With<Player>>,
+fn plan_movement(
+	query:Query<(&mut PlayerMovement, &mut Velocity, &mut PhysicalRotation), With<Player>>,
 	time:Res<Time<Fixed>>,
 ){
 	let delta = time.delta_secs();
-
-	for (mut movement, mut translation, mut rotation) in query{
-
-	info!("move player! {}", delta);
+	for (mut movement, mut velocity, mut rotation) in query{
+		rotation.0 = rotation.0.rotate_towards(Quat::from_axis_angle(Vec3::Y, movement.target_angle + (PI * 0.5)).normalize(), delta * PLAYER_TURN_SPEED *  PI);
 		if movement.direction != Vec2::ZERO{
 			movement.target_angle = movement.direction.to_angle();
 		}
-		translation.0 += Vec3::new(movement.direction.x, 0., -movement.direction.y) * delta * PLAYER_SPEED;
-		rotation.0 = rotation.0.rotate_towards(Quat::from_axis_angle(Vec3::Y, movement.target_angle + (PI * 0.5)).normalize(), delta * PLAYER_TURN_SPEED *  PI);
+		if let Ok((dir, length)) =  Dir3::new_and_length(Vec3::new(movement.direction.x, 0., -movement.direction.y)){
+			velocity.speed = length * PLAYER_SPEED;
+			velocity.direction = dir;
+		}
+		else{
+			velocity.direction = Dir3::Y;
+			velocity.speed = 0.;
+		}	
+	}
+}
+
+fn do_movement(
+	query:Query<(&Velocity, &mut PhysicalTranslation), With<Player>>,
+		time:Res<Time<Fixed>>,
+){
+	let delta = time.delta_secs();
+	for (velocity, mut translation) in query{
+
+		//TODO: Collision detection!
+		translation.0 += velocity.direction * velocity.speed * delta;
 	}
 }
 

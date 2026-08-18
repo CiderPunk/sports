@@ -3,7 +3,7 @@ use std::f32::consts::PI;
 use bevy::{asset::RenderAssetUsages, color::palettes::css::{BLUE, PINK, RED, WHITE, YELLOW}, gltf::GltfMesh, light::{NotShadowCaster, NotShadowReceiver}, math::VectorSpace, mesh::Indices, prelude::*, transform, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
 
-use crate::{animation_manager::AnimationManager, assets::AssetLoadState, game_state::GameState, get_gltf_primative, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}};
+use crate::{animation_manager::AnimationManager, assets::AssetLoadState, game_state::GameState, get_gltf_primative, interpolation::PhysicalTranslation, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}, physics::{Collider, PlaneTarget, Velocity}};
 
 const LINE_FLOAT_HEIGHT: f32 = 0.05;
 
@@ -23,7 +23,8 @@ impl Plugin for PitchPlugin{
 				.load_collection::<PitchAssets>(),
 			)			
 			.add_systems(OnEnter(GameState::Initialize), (modify_materials, init_pitch_models))
-			.add_systems(OnEnter(GameState::Playing), (spawn_pitch, spawn_pitch_models));
+			.add_systems(OnEnter(GameState::Playing), (spawn_pitch, spawn_pitch_models, spawn_pitch_colliders));
+
 	}
 }
 
@@ -272,6 +273,45 @@ fn modify_materials(
 }
 
 
+fn spawn_pitch_colliders(
+	mut commands:Commands,
+	pitch_config:Res<PitchConfiguration>,
+){	
+
+	let half_width = (pitch_config.width * 0.5) + pitch_config.border;
+	let half_height = (pitch_config.width * 0.5) + pitch_config.border;
+	commands.spawn((
+		Collider{ shape: crate::physics::ColliderShape::Plane( 
+			PlaneTarget{ normal:Dir3::Y,  })
+		},
+		Transform::from_xyz(0.,0.,0.),
+		Velocity::ZERO,
+		PhysicalTranslation(Vec3::ZERO),
+		children![
+			(
+				Collider{ shape: crate::physics::ColliderShape::Plane(PlaneTarget { normal: Dir3::X })},
+				PhysicalTranslation(Vec3::new(-half_width, 0., 0.)),
+				Velocity::ZERO,
+			),
+			(
+				Collider{ shape: crate::physics::ColliderShape::Plane(PlaneTarget { normal: Dir3::NEG_X })},
+				PhysicalTranslation(Vec3::new(half_width, 0., 0.)),
+				Velocity::ZERO,
+			),
+			(
+				Collider{ shape: crate::physics::ColliderShape::Plane(PlaneTarget { normal: Dir3::Z })},
+				PhysicalTranslation(Vec3::new(0., 0., -half_height)),
+				Velocity::ZERO,
+			),
+			(
+				Collider{ shape: crate::physics::ColliderShape::Plane(PlaneTarget { normal: Dir3::NEG_Z })},
+				PhysicalTranslation(Vec3::new(0., 0., half_height)),
+				Velocity::ZERO,
+			),
+		]
+
+	));
+}
 
 fn spawn_pitch_models(
 	mut commands:Commands,

@@ -1,10 +1,67 @@
 use bevy::{math::FloatPow, prelude::*};
 
-const EPSILON_TOLERANCE: f32 = 1e-5; 
+pub const EPSILON_TOLERANCE: f32 = 1e-5; 
 
+
+pub struct PhysicsPlugin;
+
+impl Plugin for PhysicsPlugin{
+	fn build(&self, app: &mut App) {
+	}
+}
+
+
+#[derive(Debug, Clone, Copy)]
 pub struct FrameMotion{
-	pub direction:Vec3,
+	pub origin:Vec3,
+	pub direction:Dir3,
 	pub distance:f32,
+}
+impl FrameMotion {
+	pub fn final_position(&self) -> Vec3 {
+		self.origin + (self.direction * self.distance)	
+	}
+}
+
+
+#[derive(Component, Debug, Clone, Copy)]
+pub struct Velocity{
+	pub direction:Dir3,
+	pub speed:f32,
+}
+
+
+impl Default for Velocity{
+	fn default() -> Self {
+		Self{ direction: Dir3::Y, speed: 0.}
+	}
+}
+impl Velocity{
+	pub const ZERO: Self = Self{ direction: Dir3::Y, speed: 0.};
+
+	pub fn zero(&mut self) -> Velocity{
+		self.direction= Dir3::Y;
+		self.speed = 0.;
+		*self
+	}
+	pub fn to_vec3(&self) -> Vec3{
+		self.direction * self.speed
+	}
+
+	pub fn from_vec3(&mut self, value:Vec3){
+		if let Ok((direction, speed)) = Dir3::new_and_length(value){
+			self.direction = direction;
+			self.speed = speed;
+		}
+	}
+
+	pub fn to_frame_motion(&self, origin: Vec3, offset_seconds:f32, frame_period:f32) -> FrameMotion{
+		FrameMotion{
+			origin: origin + (self.direction * self.speed * offset_seconds),
+			direction: self.direction,
+			distance: self.speed * frame_period,
+		}
+	}
 }
 
 #[derive( Debug, Clone)]
@@ -24,16 +81,35 @@ pub struct SphereSweep {
 	pub movement:FrameMotion,
 	pub radius: f32,
 }
-
+#[derive(Copy, Clone, Debug)]
 pub struct HitResult {
 	pub time: f32,        // t between 0.0 and 1.0
 	pub point: Vec3,       // World position of contact
-  pub normal: Vec3,      // World normal pointing away from surface
+  pub normal: Dir3,      // World normal pointing away from surface
 }
 
 pub trait Collidable {
-	fn broad_phase(&self, origin:Vec3, movement:FrameMotion, sphere: &SphereSweep) -> bool;
-	fn narrow_phase(&self, origin:Vec3, movement:FrameMotion, sphere: &SphereSweep) -> Option<HitResult>;
+	fn broad_phase(&self, movement:&FrameMotion, sphere: &SphereSweep) -> bool;
+	fn narrow_phase(&self, movement:&FrameMotion, sphere: &SphereSweep) -> Option<HitResult>;
+}
+
+
+impl Collidable for Collider{
+		fn broad_phase(&self, movement:&FrameMotion, sphere: &SphereSweep) -> bool {
+			match &self.shape{
+				ColliderShape::Cylinder(cylinder_target) => cylinder_target.broad_phase(movement, sphere),
+				ColliderShape::Sphere(sphere_target) => sphere_target.broad_phase(movement, sphere),
+				ColliderShape::Plane(plane_target) => plane_target.broad_phase(movement, sphere),
+			}
+		}
+
+		fn narrow_phase(&self, movement:&FrameMotion, sphere: &SphereSweep) -> Option<HitResult> {
+			match &self.shape{
+				ColliderShape::Cylinder(cylinder_target) => cylinder_target.narrow_phase(movement, sphere),
+				ColliderShape::Sphere(sphere_target) => sphere_target.narrow_phase(movement, sphere),
+				ColliderShape::Plane(plane_target) => plane_target.narrow_phase(movement, sphere),
+			}
+		}
 }
 
 #[derive( Debug, Clone)]
@@ -44,26 +120,26 @@ pub struct CylinderTarget{
 }
 
 impl Collidable for CylinderTarget{
-	fn broad_phase(&self, origin:Vec3, movement:FrameMotion, sphere: &SphereSweep) -> bool {
+	fn broad_phase(&self, movement:&FrameMotion, sphere: &SphereSweep) -> bool {
 		//aint hittin' shit if we ain't movin'
 		if sphere.movement.distance + movement.distance < EPSILON_TOLERANCE {  return false; }
 		//vector of cylinder from base to cap
 		let vec_cylinder = self.direction * self.length;
 		//vector from base to sphere
-		let vec_sphere = sphere.start - origin;
+		let vec_sphere = sphere.start - movement.origin;
 		//distance along cylinder 
 		let t = (vec_sphere.dot(vec_cylinder) / self.length.squared()).clamp(0.,1.);
 		//world position
-		let closest_point = origin + t * vec_cylinder;
+		let closest_point = movement.origin + t * vec_cylinder;
 		let max_dist = self.radius + sphere.radius + sphere.movement.distance + movement.distance;
 		let dist_sq = (sphere.start - closest_point).length_squared();
 		dist_sq <= max_dist.squared()
 	}
 
-	fn narrow_phase(&self, origin:Vec3, movement:FrameMotion, sphere: &SphereSweep) -> Option<HitResult> {
+	fn narrow_phase(&self, movement:&FrameMotion, sphere: &SphereSweep) -> Option<HitResult> {
 		
     let to_local_rotation = Quat::from_rotation_arc(self.direction, Vec3::Y);
-		let local_start = to_local_rotation * (sphere.start - origin);
+		let local_start = to_local_rotation * (sphere.start - movement.origin);
 		let combined_velocity = sphere.movement.direction * sphere.movement.distance - movement.direction * movement.distance;
 		let local_combined_velocity = to_local_rotation * combined_velocity;
 
@@ -104,9 +180,9 @@ impl Collidable for CylinderTarget{
     let local_hit_point = local_start + (t * local_combined_velocity);
     
     // Normal in local space ignores Y because it pushes out radially from the central axis
-    let local_normal = Vec3::new(local_hit_point.x, 0.0, local_hit_point.z).normalize_or_zero();
+    let local_normal = Dir3::from_xyz(local_hit_point.x, 0.0, local_hit_point.z).unwrap_or(Dir3::Y);//.normalize_or_zero();
 
-    // 7. Transform back to World Space
+    // Transform back to World Space
     let from_local_rotation = to_local_rotation.inverse();
     let world_normal = from_local_rotation * local_normal;
     let world_hit_point = sphere.start + t * sphere.movement.distance * sphere.movement.direction;
@@ -121,24 +197,24 @@ impl Collidable for CylinderTarget{
 
 #[derive( Debug, Clone)]
 pub struct PlaneTarget{
-	pub normal:Vec3,
+	pub normal:Dir3,
 }
 
 impl Collidable for PlaneTarget{
 
-	fn broad_phase(&self, _origin:Vec3, _movement:FrameMotion, sphere: &SphereSweep) -> bool {
+	fn broad_phase(&self, _movement:&FrameMotion, sphere: &SphereSweep) -> bool {
 		sphere.movement.distance  > EPSILON_TOLERANCE
 	}
 
-	fn narrow_phase(&self, origin:Vec3, _movement:FrameMotion, sphere: &SphereSweep) -> Option<HitResult> {
-		let denominator = sphere.movement.direction.dot(self.normal);
+	fn narrow_phase(&self, movement:&FrameMotion, sphere: &SphereSweep) -> Option<HitResult> {
+		let denominator = sphere.movement.direction.dot(self.normal.into());
 		if denominator >= -EPSILON_TOLERANCE { return None; }
 
 		// Shift plane toward the sphere origin by the sphere's radius
-		let shifted_plane_origin = origin + self.normal * sphere.radius;
+		let shifted_plane_origin = movement.origin + self.normal * sphere.radius;
 		
 		// Distance along the ray to the point of impact
-		let hit_distance = (shifted_plane_origin - sphere.start).dot(self.normal) / denominator;
+		let hit_distance = (shifted_plane_origin - sphere.start).dot(self.normal.into()) / denominator;
 
 		if hit_distance >= 0.0 && hit_distance <= sphere.movement.distance {
 			let t = hit_distance / sphere.movement.distance;
@@ -161,15 +237,15 @@ pub struct SphereTarget{
 }
 
 impl Collidable for SphereTarget{
-	fn broad_phase(&self, origin:Vec3, movement:FrameMotion, sphere: &SphereSweep) -> bool {
+	fn broad_phase(&self, movement:&FrameMotion, sphere: &SphereSweep) -> bool {
 		if sphere.movement.distance + movement.distance < EPSILON_TOLERANCE {  return false; }
 		let max_dist = sphere.radius + self.radius + sphere.movement.distance + movement.distance;
-		sphere.start.distance_squared(origin) < max_dist.squared()
+		sphere.start.distance_squared(movement.origin) < max_dist.squared()
 	}
 
-	fn narrow_phase(&self, origin:Vec3, movement:FrameMotion,  sphere: &SphereSweep) -> Option<HitResult> {
+	fn narrow_phase(&self, movement:&FrameMotion,  sphere: &SphereSweep) -> Option<HitResult> {
 		
-		let vec_sphere = sphere.start - origin;
+		let vec_sphere = sphere.start - movement.origin;
 		let total_radius = sphere.radius + self.radius;
 		let velocity = (sphere.movement.direction * sphere.movement.distance) - (movement.direction * movement.distance);
 
@@ -190,7 +266,7 @@ impl Collidable for SphereTarget{
 		if t == f32::MAX { return None; }
 
 		let world_hit_point = sphere.start + t * velocity;
-		let normal = (world_hit_point - origin).normalize_or_zero();
+		let normal = Dir3::new(world_hit_point - movement.origin).unwrap_or(Dir3::Y);
 
 		Some(HitResult {
 			time: t,
