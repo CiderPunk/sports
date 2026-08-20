@@ -75,6 +75,7 @@ pub enum ColliderShape{
 #[require(PhysicalProperties)]
 pub struct Collider{
 	pub	shape:ColliderShape,
+	pub restitution:f32,
 }
 
 #[derive(Component, Debug, Clone)]
@@ -108,7 +109,6 @@ pub trait Collidable {
 	fn narrow_phase(&self, movement:&FrameMotion, entity:Entity, sphere: &SphereSweep) -> Option<HitResult>;
 }
 
-
 impl Collidable for Collider{
 		fn broad_phase(&self, movement:&FrameMotion, sphere: &SphereSweep) -> bool {
 			match &self.shape{
@@ -129,7 +129,7 @@ impl Collidable for Collider{
 
 #[derive( Debug, Clone)]
 pub struct CylinderTarget{
-	pub direction:Vec3, // from base to tip, normalized
+	pub direction:Dir3, // from base to tip, normalized
 	pub radius:f32,
 	pub length:f32,
 }
@@ -153,7 +153,7 @@ impl Collidable for CylinderTarget{
 
 	fn narrow_phase(&self, movement:&FrameMotion, entity:Entity, sphere: &SphereSweep) -> Option<HitResult> {
 		
-    let to_local_rotation = Quat::from_rotation_arc(self.direction, Vec3::Y);
+    let to_local_rotation = Quat::from_rotation_arc(self.direction.into(), Vec3::Y);
 		let local_start = to_local_rotation * (sphere.start - movement.origin);
 		let combined_velocity = sphere.movement.direction * sphere.movement.distance - movement.direction * movement.distance;
 		let local_combined_velocity = to_local_rotation * combined_velocity;

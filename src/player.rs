@@ -15,6 +15,7 @@ use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, game_g
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_TURN_SPEED: f32 = 3.0;
 const PLAYER_COLLISION_RADIUS:f32 = 0.4;
+const PLAYER_RESTITUTION:f32 = 0.6;
 pub const PLAYER_HEIGHT:f32 = 1.8;
 pub const PLAYER_MAX_DRIBBLE_DISTANCE:f32 = 1.4;
 pub const PLAYER_OPTIMAL_DRIBBLE_DISTANCE:f32 = 0.7;
@@ -131,10 +132,11 @@ let kit_colours = [BLACK, WHITE, RED, GREEN, BLUE, PURPLE, PINK, YELLOW, BROWN, 
 
 			Collider{ 
 				shape: ColliderShape::Cylinder( CylinderTarget{ 
-					direction: Vec3::Y, 
+					direction: Dir3::Y, 
 					radius: PLAYER_COLLISION_RADIUS, 
 					length: PLAYER_HEIGHT
-				 }) 
+				 }),
+				 restitution:PLAYER_RESTITUTION,
 			},
 			/*
 			children![

@@ -3,11 +3,12 @@ use std::f32::consts::PI;
 use bevy::{asset::RenderAssetUsages, color::palettes::css::{BLUE, PINK, RED, WHITE, YELLOW}, gltf::GltfMesh, light::{NotShadowCaster, NotShadowReceiver}, math::VectorSpace, mesh::Indices, prelude::*, transform, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
 
-use crate::{animation_manager::AnimationManager, assets::AssetLoadState, game_state::GameState, get_gltf_primative, interpolation::PhysicalTranslation, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}, physics::{Collider, PhysicalProperties, PlaneTarget, Velocity}};
+use crate::{animation_manager::AnimationManager, assets::AssetLoadState, game_state::GameState, get_gltf_primative, interpolation::PhysicalTranslation, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}, physics::{Collider, CylinderTarget, PhysicalProperties, PlaneTarget, Velocity}};
 
 const LINE_FLOAT_HEIGHT: f32 = 0.05;
-const PITCH_RESTITUTION:f32 = 0.4;
+const PITCH_RESTITUTION:f32 = 0.7;
 const WALL_RESTITUTION:f32 = 0.9;
+const POLE_RESTITUTION:f32 = 0.9;
 
 pub struct PitchPlugin;
 impl Plugin for PitchPlugin{
@@ -282,59 +283,76 @@ fn spawn_pitch_colliders(
 
 	let half_width = (pitch_config.width * 0.5) + pitch_config.border;
 	let half_length = (pitch_config.length * 0.5) + pitch_config.border;
+	let goal_offset = pitch_config.goal_width * 0.5;
 	commands.spawn((
 		Collider{ 
 			shape: crate::physics::ColliderShape::Plane(PlaneTarget{ normal:Dir3::Y,  }),
-		},
-		PhysicalProperties{
 			restitution: PITCH_RESTITUTION,
-			..default()
 		},
 		//Transform::from_xyz(0.,0.,0.),
 		PhysicalTranslation(Vec3::ZERO),
 		children![
+			//4 walls
 			(
 				Collider{ 
 					shape: crate::physics::ColliderShape::Plane(PlaneTarget { normal: Dir3::X }),
-				},
-				PhysicalProperties{
 					restitution: WALL_RESTITUTION,
-					..default()
 				},
 				PhysicalTranslation(Vec3::new(-half_width, 0., 0.)),
 			),
 			(
 				Collider{ 
 					shape: crate::physics::ColliderShape::Plane(PlaneTarget { normal: Dir3::NEG_X }),
-				},
-				PhysicalProperties{
 					restitution: WALL_RESTITUTION,
-					..default()
 				},
 				PhysicalTranslation(Vec3::new(half_width, 0., 0.)),
 			),
 			(
 				Collider{ 
 					shape: crate::physics::ColliderShape::Plane(PlaneTarget { normal: Dir3::Z }),
-				},
-				PhysicalProperties{
 					restitution: WALL_RESTITUTION,
-					..default()
 				},
 				PhysicalTranslation(Vec3::new(0., 0., -half_length)),
 			),
 			(
 				Collider{ 
 					shape: crate::physics::ColliderShape::Plane(PlaneTarget { normal: Dir3::NEG_Z }),
-				},
-				PhysicalProperties{
 					restitution: WALL_RESTITUTION,
-					..default()
 				},
 				PhysicalTranslation(Vec3::new(0., 0., half_length)),
 			),
-		]
+			//bottom goal
+			(
+				Collider{ 
+					shape: crate::physics::ColliderShape::Cylinder(CylinderTarget { direction: Dir3::Y, radius: pitch_config.pole_radius, length: pitch_config.goal_height }),
+					restitution: POLE_RESTITUTION,
+				},
+				PhysicalTranslation(Vec3::new(goal_offset, 0., half_length)),
+			),
+			(
+				Collider{ 
+					shape: crate::physics::ColliderShape::Cylinder(CylinderTarget { direction: Dir3::Y, radius: pitch_config.pole_radius, length: pitch_config.goal_height }),
+					restitution: POLE_RESTITUTION,
+				},
+				PhysicalTranslation(Vec3::new(-goal_offset, 0., half_length)),
+			),
+			//top goal
+			(
+				Collider{ 
+					shape: crate::physics::ColliderShape::Cylinder(CylinderTarget { direction: Dir3::Y, radius: pitch_config.pole_radius, length: pitch_config.goal_height }),
+					restitution: POLE_RESTITUTION,
+				},
+				PhysicalTranslation(Vec3::new(goal_offset, 0., -half_length)),
+			),
+			(
+				Collider{ 
+					shape: crate::physics::ColliderShape::Cylinder(CylinderTarget { direction: Dir3::Y, radius: pitch_config.pole_radius, length: pitch_config.goal_height }),
+					restitution: POLE_RESTITUTION,
+				},
+				PhysicalTranslation(Vec3::new(-goal_offset, 0., -half_length)),
+			),
 
+		],
 	));
 }
 
@@ -577,6 +595,7 @@ pub struct PitchConfiguration{
 	corner_arc_radius:f32,
 	pub penalty_spot_from_goal:f32,
 	penalty_arc_radius:f32,
+	pole_radius:f32,
 }
 
 impl Default for PitchConfiguration{
@@ -597,6 +616,7 @@ impl Default for PitchConfiguration{
 			penalty_spot_from_goal: 11.,
 			penalty_arc_radius: 9.15,
     	line_width: 0.2,
+			pole_radius:0.1,
 		}
 	}
 }
