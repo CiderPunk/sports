@@ -129,10 +129,12 @@ let kit_colours = [BLACK, WHITE, RED, GREEN, BLUE, PURPLE, PINK, YELLOW, BROWN, 
 			Velocity{ direction: Dir3::Y, speed: 0. },
 			PhysicalRotation(Quat::from_rotation_y(0.)),
 
-			Collider{ shape: ColliderShape::Cylinder( CylinderTarget{ 
-				direction: Vec3::Y, 
-				radius: PLAYER_COLLISION_RADIUS, 
-				length: PLAYER_HEIGHT }) 
+			Collider{ 
+				shape: ColliderShape::Cylinder( CylinderTarget{ 
+					direction: Vec3::Y, 
+					radius: PLAYER_COLLISION_RADIUS, 
+					length: PLAYER_HEIGHT
+				 }) 
 			},
 			/*
 			children![

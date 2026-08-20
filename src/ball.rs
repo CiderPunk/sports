@@ -2,7 +2,7 @@ use std::{f32::consts::PI, ops::Mul};
 
 use bevy::{color::palettes::css::RED, log::tracing_subscriber::fmt::time, math::{FloatPow, VectorSpace}, prelude::*};
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, game_schedule::GameSchedule, game_state::GameState, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, HitResult, SphereSweep, SphereTarget, Velocity}, player::{ PLAYER_DRIBBLE_ANGLE, PLAYER_HEIGHT, PLAYER_MAX_DRIBBLE_DISTANCE, PLAYER_OPTIMAL_DRIBBLE_DISTANCE, Player, PlayerMovement}};
+use crate::{assets::AssetLoadState, game_schedule::GameSchedule, game_state::GameState, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, PhysicalProperties, SphereSweep, SphereTarget, Velocity}, player::{ PLAYER_DRIBBLE_ANGLE, PLAYER_HEIGHT, PLAYER_MAX_DRIBBLE_DISTANCE, PLAYER_OPTIMAL_DRIBBLE_DISTANCE, Player, PlayerMovement}};
 
 
 const BALL_SCALE: f32 = 0.5;
@@ -73,11 +73,16 @@ fn spawn_ball(
 		Ball{
 			..default()
 		},
-		Collider{ shape: ColliderShape::Sphere( SphereTarget{ radius: BALL_RADIUS }) },
+		Collider{ 
+			shape: ColliderShape::Sphere( SphereTarget{ radius: BALL_RADIUS }),
+		},
+		PhysicalProperties{ restitution: 0.95, mass: 1.0 },
 		Velocity{ direction: Dir3::X, speed:5. },
 		PhysicalTranslation(Vec3::new(-30., 10. ,0.)),
 	));
 }
+
+
 /*
 fn decide_influence(
 	ball:Single<(&mut Ball, &PhysicalTranslation), Without<Player>>,
@@ -137,10 +142,10 @@ fn decide_influence(
 }
  */
 fn physics(
-	ball:Single<(&PhysicalTranslation, &mut Velocity), With<Ball>>,
+	ball:Single<( &PhysicalTranslation, &mut Velocity, &PhysicalProperties), With<Ball>>,
 	time:Res<Time<Fixed>>,
 ){
-	let (translation, mut ball_velocity) = ball.into_inner();
+	let (translation, mut ball_velocity, ball_props) = ball.into_inner();
 	let mut velocity = ball_velocity.to_vec3();
 	//ball in the air, apply gravity!
 	if translation.0.y > BALL_RADIUS{
@@ -163,28 +168,30 @@ fn physics(
 
 fn collisions(
 	ball:Single<(&mut PhysicalTranslation, &mut Velocity), With<Ball>>,
-	colliders:Query<(&Collider, &PhysicalTranslation, &Velocity), Without<Ball>>,
+	colliders:Query<(Entity, &Collider, &PhysicalTranslation, Option<&Velocity>), Without<Ball>>,
+	collision_target_query:Query<(&Velocity, &PhysicalProperties), Without<Ball>>,
 	time:Res<Time<Fixed>>,
 ){
 	let (mut translation, mut ball_velocity) = ball.into_inner();
-	let mut ball_translation = translation.0;
+	let ball_translation = translation.0;
 	let mut ball_movement =  ball_velocity.to_frame_motion(ball_translation, 0., time.delta_secs());
-
 	let mut time_offset = 0.;
 	let mut collision_count:usize = 0;
 	let mut delta = time.delta_secs();
-	while ball_movement.distance > 0. && collision_count < 3 {
+	while delta > 0. && collision_count < 3 {
 		let sphere_sweep = SphereSweep{ 
 			start: ball_translation, 
 			movement: ball_movement,
 			radius: BALL_RADIUS,
 		};
 		let mut nearest:Option<HitResult> = None;
-		for (collider, translation, velocity) in colliders{
-			let movement = velocity.to_frame_motion(translation.0, time_offset, delta);
-			
+		for (entity, collider, translation, velocity) in colliders{
+			let movement = match velocity{
+				Some(velocity) => velocity.to_frame_motion(translation.0, time_offset, delta),
+				None => FrameMotion{ origin: translation.0, direction: Dir3::Y, distance: 0. }
+			};
 			if collider.broad_phase(&movement, &sphere_sweep){
-				if let Some(hit) = collider.narrow_phase( &movement, &sphere_sweep){
+				if let Some(hit) = collider.narrow_phase( &movement, entity, &sphere_sweep){
 					if let Some(ref near) = nearest{
 						if hit.time < near.time{
 							nearest = Some(hit);
@@ -198,19 +205,34 @@ fn collisions(
 		}
 		if let Some(collision) = nearest{
 			collision_count += 1;
-			
 			//collision!
 			info!("Collision! {}", ball_velocity.direction);
-			ball_movement.origin = collision.point;
-			ball_movement.direction = Dir3::new(ball_movement.direction.reflect(collision.normal.into())).unwrap_or(Dir3::Y);
-			ball_movement.distance = (1.0 - collision.time) * ball_movement.distance;
 			let time_since_last = delta * collision.time;
 			delta -= time_since_last;
 			time_offset += time_since_last;
+			let collision_point_shifted = collision.point + collision.normal * EPSILON_TOLERANCE;
+			if let Ok((target_velocity, target_props)) = collision_target_query.get(collision.entity){
+				
+				let target_v = target_velocity.to_vec3();
+				let ball_v = ball_velocity.to_vec3();
+				let approach_v = ball_v - target_v;
+				let normal_vec:Vec3 = collision.normal.into();
+				let approach_speed = approach_v.dot(normal_vec);
+				let next_ball_vel = ball_v - (1.0 + target_props.restitution) * approach_speed * normal_vec;
+				
+				ball_velocity.from_vec3(next_ball_vel);
+				ball_movement = ball_velocity.to_frame_motion(collision_point_shifted, 0., delta);
+			}
+			else{
+				ball_movement.distance = (1.0 - collision.time) * ball_movement.distance;
+				ball_movement.origin = collision_point_shifted;
+				ball_movement.direction = Dir3::new(ball_movement.direction.reflect(collision.normal.into())).unwrap_or(Dir3::Y);
+			}
+
 		}
 		else{
 			translation.0 = ball_movement.final_position();
-			ball_movement.distance = 0.;
+			delta = 0.;
 		}
 	}
 

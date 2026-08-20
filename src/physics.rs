@@ -72,9 +72,23 @@ pub enum ColliderShape{
 }
 
 #[derive(Component, Debug, Clone)]
+#[require(PhysicalProperties)]
 pub struct Collider{
 	pub	shape:ColliderShape,
 }
+
+#[derive(Component, Debug, Clone)]
+pub struct  PhysicalProperties{
+	pub restitution:f32,
+	pub mass:f32,
+}
+
+impl Default for PhysicalProperties{
+	fn default() -> Self {
+			Self{ restitution: 0.8, mass: 10000. }
+	}
+}
+
 
 pub struct SphereSweep {
 	pub start: Vec3,
@@ -86,11 +100,12 @@ pub struct HitResult {
 	pub time: f32,        // t between 0.0 and 1.0
 	pub point: Vec3,       // World position of contact
   pub normal: Dir3,      // World normal pointing away from surface
+	pub entity: Entity,
 }
 
 pub trait Collidable {
 	fn broad_phase(&self, movement:&FrameMotion, sphere: &SphereSweep) -> bool;
-	fn narrow_phase(&self, movement:&FrameMotion, sphere: &SphereSweep) -> Option<HitResult>;
+	fn narrow_phase(&self, movement:&FrameMotion, entity:Entity, sphere: &SphereSweep) -> Option<HitResult>;
 }
 
 
@@ -103,11 +118,11 @@ impl Collidable for Collider{
 			}
 		}
 
-		fn narrow_phase(&self, movement:&FrameMotion, sphere: &SphereSweep) -> Option<HitResult> {
+		fn narrow_phase(&self, movement:&FrameMotion, entity:Entity, sphere: &SphereSweep) -> Option<HitResult> {
 			match &self.shape{
-				ColliderShape::Cylinder(cylinder_target) => cylinder_target.narrow_phase(movement, sphere),
-				ColliderShape::Sphere(sphere_target) => sphere_target.narrow_phase(movement, sphere),
-				ColliderShape::Plane(plane_target) => plane_target.narrow_phase(movement, sphere),
+				ColliderShape::Cylinder(cylinder_target) => cylinder_target.narrow_phase(movement, entity,sphere),
+				ColliderShape::Sphere(sphere_target) => sphere_target.narrow_phase(movement,entity, sphere),
+				ColliderShape::Plane(plane_target) => plane_target.narrow_phase(movement,entity, sphere),
 			}
 		}
 }
@@ -136,7 +151,7 @@ impl Collidable for CylinderTarget{
 		dist_sq <= max_dist.squared()
 	}
 
-	fn narrow_phase(&self, movement:&FrameMotion, sphere: &SphereSweep) -> Option<HitResult> {
+	fn narrow_phase(&self, movement:&FrameMotion, entity:Entity, sphere: &SphereSweep) -> Option<HitResult> {
 		
     let to_local_rotation = Quat::from_rotation_arc(self.direction, Vec3::Y);
 		let local_start = to_local_rotation * (sphere.start - movement.origin);
@@ -191,6 +206,7 @@ impl Collidable for CylinderTarget{
         time: t,
         point: world_hit_point,
         normal: world_normal,
+				entity,
     })
 	}
 }
@@ -206,7 +222,7 @@ impl Collidable for PlaneTarget{
 		sphere.movement.distance  > EPSILON_TOLERANCE
 	}
 
-	fn narrow_phase(&self, movement:&FrameMotion, sphere: &SphereSweep) -> Option<HitResult> {
+	fn narrow_phase(&self, movement:&FrameMotion, entity:Entity, sphere: &SphereSweep) -> Option<HitResult> {
 		let denominator = sphere.movement.direction.dot(self.normal.into());
 		if denominator >= -EPSILON_TOLERANCE { return None; }
 
@@ -223,6 +239,7 @@ impl Collidable for PlaneTarget{
 					time: t,
 					point: world_hit_point,
 					normal: self.normal,
+					entity,
 			})
 		} else {
 			None
@@ -243,7 +260,7 @@ impl Collidable for SphereTarget{
 		sphere.start.distance_squared(movement.origin) < max_dist.squared()
 	}
 
-	fn narrow_phase(&self, movement:&FrameMotion,  sphere: &SphereSweep) -> Option<HitResult> {
+	fn narrow_phase(&self, movement:&FrameMotion, entity:Entity, sphere: &SphereSweep) -> Option<HitResult> {
 		
 		let vec_sphere = sphere.start - movement.origin;
 		let total_radius = sphere.radius + self.radius;
@@ -272,6 +289,7 @@ impl Collidable for SphereTarget{
 			time: t,
 			point: world_hit_point,
 			normal,
+			entity,
 		})
 
 	}
