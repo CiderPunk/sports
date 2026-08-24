@@ -129,7 +129,7 @@ let kit_colours = [BLACK, WHITE, RED, GREEN, BLUE, PURPLE, PINK, YELLOW, BROWN, 
 			PhysicalTranslation(Vec3::new((i as f32 * 3.) - 0.75, 0., -1.)),
 			Velocity{ direction: Dir3::Y, speed: 0. },
 			PhysicalRotation(Quat::from_rotation_y(0.)),
-
+			Name::new("Player"),
 			Collider{ 
 				shape: ColliderShape::Cylinder( CylinderTarget{ 
 					direction: Dir3::Y, 

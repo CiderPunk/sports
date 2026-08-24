@@ -28,6 +28,10 @@ pub struct PhysicalRotation(pub Quat);
 pub struct PreviousRotation(pub Quat);
 
 
+#[derive(Component)]
+pub struct Static;
+
+
 fn store_last_rotation(
 	query:Query<(&mut PreviousRotation, &PhysicalRotation)>,
 ){
@@ -47,7 +51,12 @@ fn store_last_translation(
 
 fn interpolate_transform(
   fixed_time: Res<Time<Fixed>>,
-	query:Query<(&mut Transform, &PhysicalTranslation, &PreviousTranslation, Option<&PhysicalRotation>, Option<&PreviousRotation>)>,
+	query:Query<
+		(
+			&mut Transform,
+			&PhysicalTranslation, &PreviousTranslation, 
+			Option<&PhysicalRotation>, Option<&PreviousRotation>
+		), Without<Static>>,
 ){
 
 	let fraction = fixed_time.overstep_fraction();

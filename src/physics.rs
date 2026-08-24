@@ -1,6 +1,6 @@
 use bevy::{math::FloatPow, prelude::*};
 
-pub const EPSILON_TOLERANCE: f32 = 1e-5; 
+pub const EPSILON_TOLERANCE: f32 = 1e-3; 
 
 
 pub struct PhysicsPlugin;

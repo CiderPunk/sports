@@ -150,12 +150,14 @@ fn physics(
 	let mut velocity = ball_velocity.to_vec3();
 	//ball in the air, apply gravity!
 	if translation.0.y > BALL_RADIUS + EPSILON_TOLERANCE{
+		//info!("Airborn {} > {}" , translation.0.y, BALL_RADIUS + EPSILON_TOLERANCE);
 		let force = AIR_DAMPING * ball_velocity.speed.squared();
 		let deceleration = force / BALL_MASS;
 		let delta_v = ((-ball_velocity.direction * deceleration) + GRAVITY) * time.delta_secs();
 		velocity += delta_v;
 	}
 	else{
+	
 		translation.0.y = BALL_RADIUS + EPSILON_TOLERANCE;
 		if velocity.y.abs() < 0.1{
 			velocity.y = 0.;
@@ -174,8 +176,10 @@ fn physics(
 
 fn collisions(
 	ball:Single<(&mut PhysicalTranslation, &mut Velocity), With<Ball>>,
-	colliders:Query<(Entity, &Collider, &PhysicalTranslation, Option<&Velocity>), Without<Ball>>,
+	colliders:Query<(Entity, &Collider, &PhysicalTranslation, Option<&Velocity>, &Name), Without<Ball>>,
 	time:Res<Time<Fixed>>,
+	
+	//mut gizmos: Gizmos,
 ){
 	let (mut translation, mut ball_velocity) = ball.into_inner();
 	let ball_translation = translation.0;
@@ -193,13 +197,28 @@ fn collisions(
 		let mut nearest:Option<HitResult> = None;
 		let mut target_velocity = Vec3::ZERO;
 		let mut restitution = 0.;
-		for (entity, collider, translation, velocity) in colliders{
+		for (entity, collider, translation, velocity, name) in colliders{
 			let movement = match velocity{
 				Some(velocity) => velocity.to_frame_motion(translation.0, time_offset, delta),
 				None => FrameMotion{ origin: translation.0, direction: Dir3::Y, distance: 0. }
 			};
+
+			/*
+match &collider.shape {
+		ColliderShape::Cylinder(cylinder_target) => {
+
+			gizmos.circle(translation.0, cylinder_target.radius, RED);
+		},
+		ColliderShape::Sphere(sphere_target) => (),
+		ColliderShape::Plane(plane_target) => (),
+}
+ */
+			
+
 			if collider.broad_phase(&movement, &sphere_sweep){
 				if let Some(hit) = collider.narrow_phase( &movement, entity, &sphere_sweep){
+
+				info!("collision {}", name);
 					if nearest.is_none() || hit.time < nearest.unwrap().time{
 						nearest = Some(hit);
 						restitution = collider.restitution;
@@ -225,7 +244,8 @@ fn collisions(
 			let ball_v = ball_velocity.to_vec3();
 			let approach_v = ball_v - target_velocity;
 			let normal_vec:Vec3 = collision.normal.into();
-			let approach_speed = approach_v.dot(normal_vec);
+			let approach_speed = approach_v.dot(normal_vec).min(0.);
+				
 			let next_ball_vel = ball_v - (1.0 + restitution) * approach_speed * normal_vec;
 			//info!("bounce! {}", restitution);
 			ball_velocity.from_vec3(next_ball_vel);
