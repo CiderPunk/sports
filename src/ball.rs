@@ -1,7 +1,7 @@
 
 use std::f32::consts::PI;
 
-use bevy::{color::palettes::css::RED, math::FloatPow, prelude::*};
+use bevy::{color::palettes::css::{BLUE, RED, YELLOW}, math::FloatPow, prelude::*};
 use bevy_asset_loader::prelude::*;
 use crate::{assets::AssetLoadState, game_schedule::GameSchedule, game_state::GameState, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, PhysicalProperties, SphereSweep, SphereTarget, Velocity}, player::{ PLAYER_DRIBBLE_ANGLE, PLAYER_HEIGHT, PLAYER_MAX_DRIBBLE_DISTANCE, PLAYER_OPTIMAL_DRIBBLE_DISTANCE, Player, PlayerMovement}};
 
@@ -101,21 +101,22 @@ fn dribble(
 	if ball_translation.0.y > DRIBBLE_HEIGHT{ return; } //no dribbling high balls!
 	for (translation, rotation, player, name) in players{
 
-		let to_ball = translation.0.xz() - ball_translation.0.xz();
+		let to_ball = ball_translation.0.xz() - translation.0.xz();
 		if to_ball.length_squared() > MAX_INTERACTION_DISTANCE_SQUARED{ continue; }
 
-		let forward = rotation.0 * Vec3::NEG_Z;
+		let forward = rotation.0 * Vec3::Z;
 		let forward_2d = forward.xz();
-		let angle_to_ball = forward_2d.angle_to(to_ball);
+		let angle_to_ball = to_ball.angle_to(forward_2d);
 
 		info!("ball angle: {} ", angle_to_ball);
 
-		let target_angle = angle_to_ball.max(-MAX_DRIBBLE_ANGLE).min(MAX_DRIBBLE_ANGLE);
+		let target_angle = angle_to_ball.clamp(-MAX_DRIBBLE_ANGLE, MAX_DRIBBLE_ANGLE);
 		info!("ball angle: {}  target angle: {}", angle_to_ball, target_angle);
 
 
-
-		gizmos.arrow(translation.0, forward.rotate_y(target_angle) * 2., RED);
+		gizmos.arrow(translation.0, translation.0 + (forward.rotate_y(angle_to_ball) * 2.), RED);
+		gizmos.arrow(translation.0, translation.0 + (forward.rotate_y(target_angle) * 2.), YELLOW);
+		gizmos.arrow(translation.0, translation.0 + (forward * 2.), BLUE);
 
 	}
 }
