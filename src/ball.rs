@@ -87,19 +87,35 @@ fn spawn_ball(
 pub const DRIBBLE_HEIGHT:f32 = 1.;
 pub const MAX_INTERACTION_DISTANCE:f32 = 2.;
 pub const MAX_INTERACTION_DISTANCE_SQUARED:f32 = MAX_INTERACTION_DISTANCE * MAX_INTERACTION_DISTANCE;
-pub const OPTIMAL_DRIBBLE_DISTANCE:f32 = 0.75;
-pub const MAX_DRIBBLE_ANGLE:f32 = PI * 0.25;
+pub const MAX_DRIBBLE_ANGLE:f32 = PI * 0.20;
 
+pub const PLAYER_MAX_CONTROL_DISTANCE:f32 = 0.75;
+pub const OPTIMAL_CONTROL_DISTANCE:f32 = 0.75;
+pub const SPEED_MATCH_FACTOR:f32 = 20.0;
+pub const DISTANCE_MATCH_FACTPR:f32 = 90.0;
+
+
+#[derive(Debug, Copy, Clone)]
+struct ControlCandidate{
+	dist_squared:f32,
+	entity:Entity, 
+	to_control_point:Vec3,
+	velocity:Velocity,
+}
 
 
 fn dribble(
-	ball:Single<(&mut Ball, &PhysicalTranslation), Without<Player>>,
-	players:Query<(&PhysicalTranslation, &PhysicalRotation, &Player, &Name)>,
+	ball:Single<( &mut Velocity, &PhysicalTranslation), With<Ball>>,
+	players:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, Entity), (With<Player>, Without<Ball>)>,
 	mut gizmos: Gizmos,
+	time:Res<Time<Fixed>>,
 ){
-	let (mut ball, ball_translation) = ball.into_inner();
+	let (mut ball_velocity,  ball_translation) = ball.into_inner();
 	if ball_translation.0.y > DRIBBLE_HEIGHT{ return; } //no dribbling high balls!
-	for (translation, rotation, player, name) in players{
+	let mut closest:Option<ControlCandidate> = None;
+	
+	//find wgo controls the ball...
+	for (translation, rotation, velocity, entity) in players{
 
 		let to_ball = ball_translation.0.xz() - translation.0.xz();
 		if to_ball.length_squared() > MAX_INTERACTION_DISTANCE_SQUARED{ continue; }
@@ -107,18 +123,41 @@ fn dribble(
 		let forward = rotation.0 * Vec3::Z;
 		let forward_2d = forward.xz();
 		let angle_to_ball = to_ball.angle_to(forward_2d);
-
-		info!("ball angle: {} ", angle_to_ball);
-
+		//info!("ball angle: {} ", angle_to_ball);
 		let target_angle = angle_to_ball.clamp(-MAX_DRIBBLE_ANGLE, MAX_DRIBBLE_ANGLE);
-		info!("ball angle: {}  target angle: {}", angle_to_ball, target_angle);
+		//info!("ball angle: {}  target angle: {}", angle_to_ball, target_angle);
 
+		//nearest control point
+		let control_point = translation.0 + (forward.rotate_y(target_angle) * OPTIMAL_CONTROL_DISTANCE); 
+		gizmos.arrow(control_point, ball_translation.0, RED);
+		let to_control_point = ball_translation.0 - control_point;
 
-		gizmos.arrow(translation.0, translation.0 + (forward.rotate_y(angle_to_ball) * 2.), RED);
-		gizmos.arrow(translation.0, translation.0 + (forward.rotate_y(target_angle) * 2.), YELLOW);
-		gizmos.arrow(translation.0, translation.0 + (forward * 2.), BLUE);
-
+		let dist_squared = to_control_point.length_squared();
+		if dist_squared < PLAYER_MAX_CONTROL_DISTANCE * PLAYER_MAX_CONTROL_DISTANCE{
+			if closest.is_none() || closest.unwrap().dist_squared > dist_squared{ 
+				closest = Some(ControlCandidate { dist_squared, entity, to_control_point, velocity:*velocity });
+			}
+		}
 	}
+	if closest.is_none(){
+		return;
+	}
+	if let Some(candidate) = closest{
+		let mut ball_vec = ball_velocity.to_vec3();
+		let vel_diff = candidate.velocity.to_vec3() - ball_vec;
+		let control_force = -candidate.to_control_point * DISTANCE_MATCH_FACTPR;
+		let speed_match_force = vel_diff * SPEED_MATCH_FACTOR;
+		let combined_force = control_force + speed_match_force;
+		ball_vec += time.delta_secs() * combined_force;
+
+		//update ball velocity
+		ball_velocity.from_vec3(ball_vec);
+		//candidate.to_control_point
+		gizmos.arrow(ball_translation.0, ball_translation.0 + vel_diff, BLUE);
+		
+	};
+
+
 }
 
 
