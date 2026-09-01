@@ -128,7 +128,7 @@ fn dribble(
 		//info!("ball angle: {}  target angle: {}", angle_to_ball, target_angle);
 
 		//nearest control point
-		let control_point = translation.0 + (forward.rotate_y(target_angle) * OPTIMAL_CONTROL_DISTANCE); 
+		let control_point = translation.0 + (forward.rotate_y(target_angle) * OPTIMAL_CONTROL_DISTANCE).with_y(BALL_RADIUS + EPSILON_TOLERANCE); 
 		gizmos.arrow(control_point, ball_translation.0, RED);
 		let to_control_point = ball_translation.0 - control_point;
 
@@ -227,7 +227,7 @@ fn physics(
 	let mut velocity = ball_velocity.to_vec3();
 	//ball in the air, apply gravity!
 	if translation.0.y > BALL_RADIUS + EPSILON_TOLERANCE{
-		//info!("Airborn {} > {}" , translation.0.y, BALL_RADIUS + EPSILON_TOLERANCE);
+		info!("Airborn {} > {}" , translation.0.y, BALL_RADIUS + EPSILON_TOLERANCE);
 		let force = AIR_DAMPING * ball_velocity.speed.squared();
 		let deceleration = force / BALL_MASS;
 		let delta_v = ((-ball_velocity.direction * deceleration) + GRAVITY) * time.delta_secs();
@@ -236,7 +236,7 @@ fn physics(
 	else{
 	
 		translation.0.y = BALL_RADIUS + EPSILON_TOLERANCE;
-		if velocity.y.abs() < 0.1{
+		if velocity.y.abs() < EPSILON_TOLERANCE{
 			velocity.y = 0.;
 		}
 		let damping_deceleration = (ball_velocity.direction.xz()) * GROUND_DECELERATION * time.delta_secs(); 
