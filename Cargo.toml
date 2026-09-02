@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = { version = "0.19.0" }
+bevy = { version = "0.19.1" }
 bevy_asset_loader = "0.27.0"
 bevy_enhanced_input = "0.26.0"
-bevy_pbr = "0.19.0"
+bevy_pbr = "0.19.1"
 
 rand_core = "0.10"
 bevy_rand = "0.15"

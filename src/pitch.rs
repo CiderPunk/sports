@@ -1,11 +1,14 @@
 use std::f32::consts::PI;
 
-use bevy::{asset::RenderAssetUsages, color::palettes::css::{BLUE, PINK, RED, WHITE, YELLOW}, gltf::GltfMesh, light::{NotShadowCaster, NotShadowReceiver}, math::VectorSpace, mesh::Indices, prelude::*, transform, world_serialization::WorldInstanceReady};
+use bevy::{asset::RenderAssetUsages, color::palettes::css::{RED, WHITE, YELLOW}, gltf::GltfMesh, light::NotShadowCaster, mesh::Indices, prelude::*, };
 use bevy_asset_loader::prelude::*;
 
-use crate::{animation_manager::AnimationManager, assets::AssetLoadState, game_state::GameState, get_gltf_primative, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}};
+use crate::{assets::AssetLoadState, game_gizmos::{GameGizmoStore, GizmoColour}, game_state::GameState, get_gltf_primative, interpolation::{PhysicalTranslation, Static}, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}, physics::{Collider, CylinderTarget, PlaneTarget}};
 
 const LINE_FLOAT_HEIGHT: f32 = 0.05;
+const PITCH_RESTITUTION:f32 = 0.65;
+const WALL_RESTITUTION:f32 = 0.9;
+const POLE_RESTITUTION:f32 = 0.9;
 
 pub struct PitchPlugin;
 impl Plugin for PitchPlugin{
@@ -23,7 +26,8 @@ impl Plugin for PitchPlugin{
 				.load_collection::<PitchAssets>(),
 			)			
 			.add_systems(OnEnter(GameState::Initialize), (modify_materials, init_pitch_models))
-			.add_systems(OnEnter(GameState::Playing), (spawn_pitch, spawn_pitch_models));
+			.add_systems(OnEnter(GameState::Playing), (spawn_pitch, spawn_pitch_models, spawn_pitch_colliders));
+
 	}
 }
 
@@ -272,6 +276,109 @@ fn modify_materials(
 }
 
 
+fn spawn_pitch_colliders(
+	mut commands:Commands,
+	pitch_config:Res<PitchConfiguration>,
+){	
+	let half_pitch_length = pitch_config.length * 0.5;
+	let half_total_width = (pitch_config.width * 0.5) + pitch_config.border;
+	let half_total_length = half_pitch_length + pitch_config.border;
+
+	
+
+	let goal_offset = pitch_config.goal_width * 0.5;
+
+
+	commands.spawn((
+		Name::new("Ground"),
+		Collider{ 
+			shape: crate::physics::ColliderShape::Plane(PlaneTarget{ normal:Dir3::Y,  }),
+			restitution: PITCH_RESTITUTION,
+		},
+		Static,
+		//Transform::from_xyz(0.,0.,0.),
+		PhysicalTranslation(Vec3::ZERO),
+		children![
+			//4 walls
+			(
+				Name::new("left wall"),
+				Collider{ 
+					shape: crate::physics::ColliderShape::Plane(PlaneTarget { normal: Dir3::X }),
+					restitution: WALL_RESTITUTION,
+				},
+				PhysicalTranslation(Vec3::new(-half_total_width, 0., 0.)),
+				Static,
+			),
+			(
+				Name::new("right wall"),
+				Collider{ 
+					shape: crate::physics::ColliderShape::Plane(PlaneTarget { normal: Dir3::NEG_X }),
+					restitution: WALL_RESTITUTION,
+				},
+				PhysicalTranslation(Vec3::new(half_total_width, 0., 0.)),
+				Static,
+			),
+			(
+				Name::new("far wall"),
+				Collider{ 
+					shape: crate::physics::ColliderShape::Plane(PlaneTarget { normal: Dir3::Z }),
+					restitution: WALL_RESTITUTION,
+				},
+				PhysicalTranslation(Vec3::new(0., 0., -half_total_length)),
+				Static,
+			),
+			(
+				Name::new("near wall"),
+				Collider{ 
+					shape: crate::physics::ColliderShape::Plane(PlaneTarget { normal: Dir3::NEG_Z }),
+					restitution: WALL_RESTITUTION,
+				},
+				PhysicalTranslation(Vec3::new(0., 0., half_total_length)),
+				Static,
+			),
+			//bottom goal
+			(
+
+				Name::new("near right post"),
+				Collider{ 
+					shape: crate::physics::ColliderShape::Cylinder(CylinderTarget { direction: Dir3::Y, radius: pitch_config.pole_radius, length: pitch_config.goal_height }),
+					restitution: POLE_RESTITUTION,
+				},
+				PhysicalTranslation(Vec3::new(goal_offset, 0., half_pitch_length)),
+				Static,
+
+			),
+			(
+				Name::new("near left post"),
+				Collider{ 
+					shape: crate::physics::ColliderShape::Cylinder(CylinderTarget { direction: Dir3::Y, radius: pitch_config.pole_radius, length: pitch_config.goal_height }),
+					restitution: POLE_RESTITUTION,
+				},
+				Static,
+				PhysicalTranslation(Vec3::new(-goal_offset, 0., half_pitch_length)),
+			),
+			//top goal
+			(
+				Name::new("far left post"),
+				Collider{ 
+					shape: crate::physics::ColliderShape::Cylinder(CylinderTarget { direction: Dir3::Y, radius: pitch_config.pole_radius, length: pitch_config.goal_height }),
+					restitution: POLE_RESTITUTION,
+				},
+				Static,
+				PhysicalTranslation(Vec3::new(goal_offset, 0., -half_pitch_length))
+			),
+			(
+				Name::new("far right post"),
+				Collider{ 
+					shape: crate::physics::ColliderShape::Cylinder(CylinderTarget { direction: Dir3::Y, radius: pitch_config.pole_radius, length: pitch_config.goal_height }),
+					restitution: POLE_RESTITUTION,
+				},
+				PhysicalTranslation(Vec3::new(-goal_offset, 0., -half_pitch_length)),
+			),
+
+		],
+	));
+}
 
 fn spawn_pitch_models(
 	mut commands:Commands,
@@ -512,6 +619,7 @@ pub struct PitchConfiguration{
 	corner_arc_radius:f32,
 	pub penalty_spot_from_goal:f32,
 	penalty_arc_radius:f32,
+	pole_radius:f32,
 }
 
 impl Default for PitchConfiguration{
@@ -532,6 +640,7 @@ impl Default for PitchConfiguration{
 			penalty_spot_from_goal: 11.,
 			penalty_arc_radius: 9.15,
     	line_width: 0.2,
+			pole_radius:0.1,
 		}
 	}
 }

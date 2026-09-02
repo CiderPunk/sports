@@ -61,7 +61,6 @@ impl SphereCast{
 	)->Option<HitResult>{
 		let combined_radius = self.radius + target_radius;
 		let p = self.origin - target_position;
-
 		let b = 2. * p.dot(*self.direction);
 		let c = p.dot(p) - (combined_radius * combined_radius);
 		
