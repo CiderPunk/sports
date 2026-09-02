@@ -7,18 +7,17 @@ mod pitch;
 mod game_control;
 mod game_schedule;
 mod game_camera;
-mod collisions;
-mod colliders;
-mod tests;
+mod physics;
 mod game_gizmos;
 mod kit;
 mod animation_manager;
+mod interpolation;
 
-use bevy::{color::palettes::css::WHITE, core_pipeline::tonemapping::Tonemapping, light::{ CascadeShadowConfigBuilder, DirectionalLightShadowMap}, prelude::*};
+use bevy::{color::palettes::css::WHITE, light::{ CascadeShadowConfigBuilder, DirectionalLightShadowMap}, prelude::*};
 use bevy_enhanced_input::EnhancedInputPlugin;
 use bevy_prng::WyRand;
 use bevy_rand::plugin::EntropyPlugin;
-use crate::{animation_manager::AnimationManagerPlugin, assets::AssetsPlugin, ball::BallPlugin, game_camera::GameCameraPlugin, game_control::GameControlPlugin, game_gizmos::GameGizmosPlugin, game_schedule::GameSchedulePlugin, game_state::GameStatePlugin, kit::KitPlugin, pitch::PitchPlugin, player::PlayerPlugin};
+use crate::{animation_manager::AnimationManagerPlugin, assets::AssetsPlugin, ball::BallPlugin, game_camera::GameCameraPlugin, game_control::GameControlPlugin, game_gizmos::GameGizmosPlugin, game_schedule::GameSchedulePlugin, game_state::GameStatePlugin, interpolation::InterpolationPlugin, kit::KitPlugin, physics::PhysicsPlugin, pitch::PitchPlugin, player::PlayerPlugin};
 
 const APP_NAME: &str = "Sportsball";
 fn main() {
@@ -39,6 +38,7 @@ fn main() {
 
 		))		
 		.add_plugins((
+			InterpolationPlugin,
 			GameStatePlugin,
 			GameSchedulePlugin,
 			AssetsPlugin,
@@ -50,6 +50,7 @@ fn main() {
 			GameGizmosPlugin,
 			KitPlugin,
 			AnimationManagerPlugin,
+			PhysicsPlugin,
 		))
 		.insert_resource(ClearColor(Color::srgb(0., 0., 0.)))
     .insert_resource(GlobalAmbientLight {

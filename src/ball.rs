@@ -1,20 +1,21 @@
+
 use std::f32::consts::PI;
 
-use bevy::{color::palettes::css::RED, prelude::*};
+use bevy::{color::palettes::css::{BLUE, RED, YELLOW}, math::FloatPow, prelude::*};
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, colliders::CollisionCylinder, collisions::{ HitResult, SphereCast}, game_schedule::GameSchedule, game_state::GameState, player::{ Movement, PLAYER_DRIBBLE_ANGLE, PLAYER_HEIGHT, PLAYER_MAX_DRIBBLE_DISTANCE, PLAYER_OPTIMAL_DRIBBLE_DISTANCE, Player}};
-
+use crate::{assets::AssetLoadState, game_schedule::GameSchedule, game_state::GameState, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, PhysicalProperties, SphereSweep, SphereTarget, Velocity}, player::{ PLAYER_DRIBBLE_ANGLE, PLAYER_HEIGHT, PLAYER_MAX_DRIBBLE_DISTANCE, PLAYER_OPTIMAL_DRIBBLE_DISTANCE, Player, PlayerMovement}};
 
 const BALL_SCALE: f32 = 0.5;
 pub const BALL_RADIUS:f32 = 0.25 * BALL_SCALE;
-const GRAVITY:f32 = 9.8;
-const BALL_COEFFECIENT_OF_RESTITUTION:f32 = 0.75;
-const MIN_BOUNCE_SPEED:f32 = 0.8;
+pub const BALL_GROUND_LEVEL:f32 = BALL_RADIUS + EPSILON_TOLERANCE;
+const GRAVITY_DOWN:f32 = 9.8;
+const GRAVITY:Vec3 = Vec3::new(0., -GRAVITY_DOWN, 0.);
+const BALL_RESTITUTION:f32 = 0.8;
 
 //air damping
 const DRAG_COEFFICIENT:f32 = 0.30;
 const AIR_DENSITY:f32 = 1.225;
-const BALL_CROSS_SECTION_AREA:f32 = 0.038;
+const BALL_CROSS_SECTION_AREA:f32 = PI * BALL_RADIUS * BALL_RADIUS; //0.038;
 const AIR_DAMPING:f32 = 0.5 * AIR_DENSITY * BALL_CROSS_SECTION_AREA * DRAG_COEFFICIENT;
 
 //ground damping
@@ -23,8 +24,17 @@ const ROLLING_RESISTANCE:f32 = 0.2;
 const BALL_MASS:f32 = 0.43;
 //don't need ball mass!
 //const GROUND_DECELERATION:f32 = (BALL_MASS * GRAVITY * ROLLING_RESISTANCE) / BALL_MASS;  
-const GROUND_DECELERATION:f32 = GRAVITY * ROLLING_RESISTANCE;  
+const GROUND_DECELERATION:f32 = GRAVITY_DOWN * ROLLING_RESISTANCE;  
 
+pub const MAX_DRIBBLE_HEIGHT:f32 = 1.;
+pub const MAX_INTERACTION_DISTANCE:f32 = 2.;
+pub const MAX_INTERACTION_DISTANCE_SQUARED:f32 = MAX_INTERACTION_DISTANCE * MAX_INTERACTION_DISTANCE;
+pub const MAX_DRIBBLE_ANGLE:f32 = PI * 0.20;
+
+pub const PLAYER_MAX_CONTROL_DISTANCE:f32 = 0.75;
+pub const OPTIMAL_CONTROL_DISTANCE:f32 = 0.75;
+pub const SPEED_MATCH_FACTOR:f32 = 14.0;
+pub const DISTANCE_MATCH_FACTPR:f32 = 90.0;
 
 pub struct BallPlugin;
 impl Plugin for BallPlugin{
@@ -35,7 +45,9 @@ impl Plugin for BallPlugin{
 				.load_collection::<BallAssets>(),
 			)
 			.add_systems(OnEnter(GameState::Playing), spawn_ball)
-			.add_systems(Update, (decide_influence, update_ball).chain().in_set(GameSchedule::MoveBall))
+			.add_systems(FixedUpdate, (dribble, physics).chain().in_set(GameSchedule::PreMovement))
+			.add_systems(FixedUpdate, (do_movement, do_rotation).chain().in_set(GameSchedule::Movement))
+		//	.add_systems(FixedUpdate, (decide_influence, update_ball).chain().in_set(GameSchedule::MoveBall))
 			;
 	}
 }
@@ -51,13 +63,19 @@ pub struct BallAssets {
 
 #[derive(Component, Debug)]
 pub struct Ball{
-	pub velocity:Vec3,
+	//pub velocity:Vec3,
 	pub control:Vec3,
 	roll_axis:Dir3,
 	roll_speed:f32,
 	last_touch:Option<Entity>,
 }
 
+
+#[derive(Component, Debug)]
+pub struct Rotation{
+	axis:Vec3,
+	speed:f32,
+}
 
 
 fn spawn_ball(
@@ -69,79 +87,115 @@ fn spawn_ball(
 		//Transform::from_translation(Vec3::new(0., BALL_GROUND_LEVEL ,0.)).with_scale(Vec3::splat(BALL_SCALE)),
 		Transform::from_translation(Vec3::new(-30., 10. ,0.)).with_scale(Vec3::splat(BALL_SCALE)),
 		Ball{
-			velocity: Dir3::X * 5.,
 			..default()
-		}
+		},
+		Collider{ 
+			shape: ColliderShape::Sphere( SphereTarget{ radius: BALL_RADIUS }),
+			restitution:BALL_RESTITUTION,
+		},
+		Velocity{ direction: Dir3::X, speed:5. },
+		PhysicalTranslation(Vec3::new(-30., 10. ,0.)),
+		PhysicalRotation(Quat::IDENTITY),
+		Rotation { axis: Vec3::X, speed: 0. }
 	));
 }
 
-fn separate_inclusions(
-	transform:&mut Transform,
-	candidates:&Vec<(&Transform, &CollisionCylinder, Entity)>,
-){
-	for _ in 0 .. 3{
-		let sphere_cast = SphereCast{ origin: transform.translation, direction: Dir3::X, radius: BALL_RADIUS, distance: 0. };
-		let mut moved = false;
-		for (player_transform, player_collision, _) in candidates.iter(){
-			if let Some(inclusion_result) = sphere_cast.inclusion_vertical_cylinder(player_transform.translation, player_collision.radius, player_collision.height){
-				transform.translation += inclusion_result.correction;
-				moved = true;
-			};
-		}
-		if !moved { break; }
-	}
+
+
+#[derive(Debug, Copy, Clone)]
+struct ControlCandidate{
+	dist_squared:f32,
+	entity:Entity, 
+	to_control_point:Vec3,
+	velocity:Velocity,
 }
 
-fn get_next_collision(
-	transform:&Transform,
-	direction:&Dir3,
-	distance:f32,
-	candidates:&Vec<(&Transform, &CollisionCylinder, Entity)>,
-)->Option<HitResult>{
-	let sphere_cast = SphereCast{ origin: transform.translation, direction:*direction,  radius: BALL_RADIUS, distance: distance };
-	let mut closest:Option<HitResult> = None;
-	for (player_transform, collision_cylinder, entity) in candidates.iter(){
-		if let Some(hit) = sphere_cast.intersect_vertical_cylinder(player_transform.translation, collision_cylinder.radius, collision_cylinder.height, *entity){
-			match closest {
-				Some(last) => if hit.distance < last.distance { 
-					closest = Some(hit);
-				}
-				None=> {
-					closest =Some(hit);
-				}
+
+fn dribble(
+	ball:Single<( &mut Velocity, &PhysicalTranslation), With<Ball>>,
+	players:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, Entity), (With<Player>, Without<Ball>)>,
+	mut gizmos: Gizmos,
+	time:Res<Time<Fixed>>,
+){
+	let (mut ball_velocity,  ball_translation) = ball.into_inner();
+	if ball_translation.0.y > MAX_DRIBBLE_HEIGHT{ return; } //no dribbling high balls!
+	let mut closest:Option<ControlCandidate> = None;
+	
+	//find who controls the ball...
+	for (translation, rotation, velocity, entity) in players{
+
+		let to_ball = ball_translation.0.xz() - translation.0.xz();
+		if to_ball.length_squared() > MAX_INTERACTION_DISTANCE_SQUARED{ continue; }
+
+		let forward = rotation.0 * Vec3::Z;
+		let forward_2d = forward.xz();
+		let angle_to_ball = to_ball.angle_to(forward_2d);
+		//info!("ball angle: {} ", angle_to_ball);
+		let target_angle = angle_to_ball.clamp(-MAX_DRIBBLE_ANGLE, MAX_DRIBBLE_ANGLE);
+		//info!("ball angle: {}  target angle: {}", angle_to_ball, target_angle);
+
+		//nearest control point
+		let control_point = translation.0 + (forward.rotate_y(target_angle) * OPTIMAL_CONTROL_DISTANCE).with_y(BALL_GROUND_LEVEL); 
+		gizmos.arrow(control_point, ball_translation.0, RED);
+		let to_control_point = ball_translation.0 - control_point;
+
+		let dist_squared = to_control_point.length_squared();
+		if dist_squared < PLAYER_MAX_CONTROL_DISTANCE * PLAYER_MAX_CONTROL_DISTANCE{
+			if closest.is_none() || closest.unwrap().dist_squared > dist_squared{ 
+				closest = Some(ControlCandidate { dist_squared, entity, to_control_point, velocity:*velocity });
 			}
 		}
 	}
-	closest
+	if closest.is_none(){
+		return;
+	}
+	if let Some(candidate) = closest{
+		let mut ball_vec = ball_velocity.to_vec3();
+		let vel_diff = candidate.velocity.to_vec3() - ball_vec;
+		let control_force = -candidate.to_control_point * DISTANCE_MATCH_FACTPR;
+		let speed_match_force = vel_diff * SPEED_MATCH_FACTOR;
+		let combined_force = control_force + speed_match_force;
+		ball_vec += time.delta_secs() * combined_force;
+
+		//update ball velocity
+		ball_velocity.from_vec3(ball_vec);
+		//candidate.to_control_point
+		gizmos.arrow(ball_translation.0, ball_translation.0 + vel_diff, BLUE);
+		
+	};
+
+
 }
 
-fn decide_influence(
-	ball:Single<(&mut Ball, &Transform), Without<Player>>,
-	players:Query<(&GlobalTransform, Entity), With<Player>>,
-	player_movement:Query<&Movement>,
-){
-	let (mut ball, ball_transform) = ball.into_inner();
 
-let mut candidates:Vec<_> = players.iter().filter_map(|(transform, entity)|{
-	let player_translation = transform.translation();
-		let diff = player_translation.xz() - ball_transform.translation.xz();
+/*
+fn decide_influence(
+	ball:Single<(&mut Ball, &PhysicalTranslation), Without<Player>>,
+	players:Query<(&PhysicalTranslation, &PhysicalRotation, Entity), With<Player>>,
+	player_movement:Query<&PlayerMovement>,
+){
+	let (mut ball, ball_translation) = ball.into_inner();
+
+	let mut candidates:Vec<_> = players.iter().filter_map(|(player_translation, player_rotation, entity)|{
+
+		let diff = player_translation.0.xz() - ball_translation.0.xz();
 		let dist_squared = diff.length_squared();
 		if dist_squared < PLAYER_MAX_DRIBBLE_DISTANCE * PLAYER_MAX_DRIBBLE_DISTANCE
-			&& player_translation.y < ball_transform.translation.y 
-			&& player_translation.y + PLAYER_HEIGHT > ball_transform.translation.y {
-			Some((dist_squared, transform, entity, diff))
+			&& player_translation.0.y < ball_translation.0.y 
+			&& player_translation.0.y + PLAYER_HEIGHT > ball_translation.0.y {
+			Some((dist_squared, player_translation.0, player_rotation.0, entity, diff))
 		}
 		else{
 			None
 		}
-	}).collect::<Vec<(f32, &GlobalTransform, Entity, Vec2)>>();
+	}).collect::<Vec<(f32, Vec3, Quat, Entity, Vec2)>>();
 	//sort by distance
 	candidates.sort_by(|p1,p2| p1.0.total_cmp(&p2.0));
 
 
-	for (len_squared, transform, entity, diff) in candidates{
+	for (len_squared, translation, rotation, entity, diff) in candidates{
 		//vertical filter
-		let forward_2d = transform.forward().xz().normalize_or_zero();
+		let forward_2d = (rotation * Dir3::NEG_Z).xz().normalize_or_zero();
 		let dot = diff.dot(forward_2d);
 		//let dot = forward_2d.dot(diff);
 		if dot < -1.{ continue;} // ball behind the player
@@ -163,94 +217,138 @@ let mut candidates:Vec<_> = players.iter().filter_map(|(transform, entity)|{
 		else{
 			if ball.control == Vec3::ZERO{
 				let forward_project = -PLAYER_OPTIMAL_DRIBBLE_DISTANCE * forward_2d;
-				let draw_location = Vec3::new(forward_project.x, 0., forward_project.y) + transform.translation();
-				ball.control = (draw_location - ball_transform.translation).normalize() * 7.0;
+				let draw_location = Vec3::new(forward_project.x, 0., forward_project.y) + translation;
+				ball.control = (draw_location - ball_translation.0).normalize() * 7.0;
 				ball.last_touch = Some(entity);
 			}
 			//info!("draw {}", ball_motion.dribble_draw);
 		}
 	}
 }
-
-
-fn update_ball(
-	ball:Single<(&mut Ball, &mut Transform), Without<Player>>,
-	players:Query<(&Transform,&CollisionCylinder, Entity), With<Player>>,
-	time:Res<Time>,
-	mut gizmos: Gizmos,
-	//mut gizmo_writer:MessageWriter<GizmoSpawnMessage>,
+ */
+fn physics(
+	ball:Single<( &mut PhysicalTranslation, &mut Velocity, &mut Rotation), With<Ball>>,
+	time:Res<Time<Fixed>>,
 ){
-	let (mut ball, mut transform) = ball.into_inner();
-	let mut direction = Dir3::new(ball.velocity).unwrap_or(-Dir3::Y);
-	let speed = ball.velocity.length();
-	let mut distance = speed * time.delta_secs();
-	
-
-	let sphere_cast = SphereCast{ origin: transform.translation, direction, radius: BALL_RADIUS, distance };
-	
-	gizmos.arrow(transform.translation, transform.translation + ball.control, RED);
-	transform.translation += ball.control * time.delta_secs();
-	ball.control = Vec3::ZERO;
-	//motion.dribble_draw = motion.dribble_draw.lerp(Vec3::ZERO, time.delta_secs() * 4.0);
-
-
-	//broad filter for local collision candidates
-	let candidates:Vec<_> = players.iter().filter(|(player_transform, collision, entity)| 
-		ball.last_touch.as_ref() != Some(entity)
-		&& sphere_cast.cylinder_candidate_filter(player_transform.translation, collision.radius) 
-	).collect();
-
-	separate_inclusions(&mut transform, &candidates);
-
-	//collision detection
-
-	while distance > 0.{
-		let hit = get_next_collision(&transform, &direction, distance, &candidates);
-		if let Some(hit) = hit{
-			info!("Collision: {} {:?}", hit.entity, ball.last_touch);
-			transform.translation = hit.position;		
-			distance -= hit.distance;
-			direction = Dir3::new_unchecked( direction.reflect(*hit.normal));
-		}
-		else{
-			transform.translation += *direction * distance;
-			distance = 0.;
-		}
-		//ball.velocity = direction * speed ;
-	}
-
+	let (mut translation, mut ball_velocity, mut ball_rotation) = ball.into_inner();
+	let mut velocity = ball_velocity.to_vec3();
+	let mut is_on_ground = false;
 	//ball in the air, apply gravity!
-	if transform.translation.y > BALL_RADIUS{
-		let force = AIR_DAMPING * speed * speed;
+	if translation.0.y > BALL_GROUND_LEVEL{
+		//info!("Airborn {} > {}" , translation.0.y, BALL_RADIUS + EPSILON_TOLERANCE);
+		let force = AIR_DAMPING * ball_velocity.speed.squared();
 		let deceleration = force / BALL_MASS;
-		let delta_v = ((-direction * deceleration) + (-Vec3::Y * GRAVITY)) * time.delta_secs();
-		ball.velocity += delta_v;
+		let delta_v = ((-ball_velocity.direction * deceleration) + GRAVITY) * time.delta_secs();
+		velocity += delta_v;
 	}
 	else{
-		//TODO: touched ground - update roll
-		ball.roll_axis = Dir3::new(direction.cross(Vec3::Y)).unwrap_or(Dir3::Y);
-		ball.roll_speed = speed * PI * BALL_RADIUS;
-
-		if ball.velocity.y < -MIN_BOUNCE_SPEED {
-			//bounce!
-			//info!("bounce {}", velocity.y);
-			ball.velocity.y *= -BALL_COEFFECIENT_OF_RESTITUTION;
-		}			
+	
+		translation.0.y = BALL_GROUND_LEVEL;
+		if velocity.y.abs() < EPSILON_TOLERANCE{
+			velocity.y = 0.;
+		}
+		is_on_ground = true;
+		let damping_deceleration = (ball_velocity.direction.xz()) * GROUND_DECELERATION * time.delta_secs(); 
+		if damping_deceleration.length_squared() > ball_velocity.speed.squared(){
+			velocity = Vec3::ZERO;
+		}
 		else{
-			let damping_deceleration = (direction.xz()) * GROUND_DECELERATION * time.delta_secs(); 
-			if damping_deceleration.length_squared() > ball.velocity.xz().length_squared(){	
-				ball.velocity = Vec3::ZERO;
-			}
-			else{
-				//info!("ground deceleration {}", damping_deceleration);
-				ball.velocity -= Vec3::new(damping_deceleration.x, 0., damping_deceleration.y);
-			}
-		}		
-		transform.translation.y = BALL_RADIUS;
+			velocity -= Vec3::ZERO.with_xz(damping_deceleration);
+		}
 	}
-	//info!("ball velocity:{}", velocity);
-	transform.rotate_axis(ball.roll_axis, -ball.roll_speed * time.delta_secs());
-	//motion.direction = Dir3::new_unchecked(velocity.normalize_or(Vec3::Y));
+	ball_velocity.from_vec3(velocity);
+	if is_on_ground{
+		info!("updating rotation");
+		if ball_velocity.speed > EPSILON_TOLERANCE{
+			ball_rotation.axis = ball_velocity.direction.cross(Vec3::Y).normalize_or_zero();
+			ball_rotation.speed = ball_velocity.speed / (2. * PI * BALL_RADIUS);
+		}
+		else{
+			ball_rotation.speed = 0.;
+		}
+	}
+}
+
+fn do_rotation(
+	ball:Single<(&mut PhysicalRotation, &Rotation), With<Ball>>,
+	time:Res<Time<Fixed>>,
+){
+
+	let (mut rotation, rotation_spec) = ball.into_inner();
+	let delta_rotation = Quat::from_axis_angle(rotation_spec.axis, rotation_spec.speed * time.delta_secs());
+	rotation.0 = delta_rotation * rotation.0;
+}
+
+fn do_movement(
+	ball:Single<(&mut PhysicalTranslation, &mut Velocity), With<Ball>>,
+	colliders:Query<(Entity, &Collider, &PhysicalTranslation, Option<&Velocity>, &Name), Without<Ball>>,
+	time:Res<Time<Fixed>>,
+){
+	let (mut translation, mut ball_velocity) = ball.into_inner();
+	let ball_translation = translation.0;
+	let mut ball_movement =  ball_velocity.to_frame_motion(ball_translation, 0., time.delta_secs());
+	let mut time_offset = 0.;
+	let mut collision_count:usize = 0;
+	let mut delta = time.delta_secs();
+
+	while delta > 0. && collision_count < 3 {
+		let sphere_sweep = SphereSweep{ 
+			start: ball_translation, 
+			movement: ball_movement,
+			radius: BALL_RADIUS,
+		};
+		let mut nearest:Option<HitResult> = None;
+		let mut target_velocity = Vec3::ZERO;
+		let mut restitution = 0.;
+		for (entity, collider, translation, velocity, name) in colliders{
+			let movement = match velocity{
+				Some(velocity) => velocity.to_frame_motion(translation.0, time_offset, delta),
+				None => FrameMotion{ origin: translation.0, direction: Dir3::Y, distance: 0. }
+			};
+
+			if collider.broad_phase(&movement, &sphere_sweep){
+				if let Some(hit) = collider.narrow_phase( &movement, entity, &sphere_sweep){
+
+				info!("collision {}", name);
+					if nearest.is_none() || hit.time < nearest.unwrap().time{
+						nearest = Some(hit);
+						restitution = collider.restitution;
+						target_velocity = match velocity {
+							Some(velocity) => velocity.to_vec3(),
+							None =>  Vec3::ZERO,
+						}
+					};
+				};
+			}
+		}
+		if let Some(collision) = nearest{
+			collision_count += 1;
+			//collision!
+			if collision_count > 1{
+			info!("Collision! {}", collision_count);
+			}
+			let time_since_last = delta * collision.time;
+			delta -= time_since_last;
+			time_offset += time_since_last;
+			let collision_point_shifted = collision.point + collision.normal * EPSILON_TOLERANCE;
+	
+			let ball_v = ball_velocity.to_vec3();
+			let approach_v = ball_v - target_velocity;
+			let normal_vec:Vec3 = collision.normal.into();
+			let approach_speed = approach_v.dot(normal_vec).min(0.);
+				
+			let next_ball_vel = ball_v - (1.0 + restitution) * approach_speed * normal_vec;
+			//info!("bounce! {}", restitution);
+			ball_velocity.from_vec3(next_ball_vel);
+			ball_movement = ball_velocity.to_frame_motion(collision_point_shifted, 0., delta);
+		}
+		else{
+			translation.0 = ball_movement.final_position();
+			delta = 0.;
+		}
+	}
+
+	ball_velocity.direction = ball_movement.direction;
 }
 
 
@@ -260,7 +358,6 @@ impl Default for Ball{
 
 	fn default()-> Self{
 		Self { 
-			velocity: Vec3::Y,
 			control:Vec3::ZERO, 
 			roll_axis: Dir3::Z, 
 			roll_speed: 0., 

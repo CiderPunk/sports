@@ -1,7 +1,7 @@
 use bevy::{math::VectorSpace, prelude::*};
 use bevy_enhanced_input::prelude::*;
 
-use crate::{game_state::GameState, player::{ActivePlayer, Movement}};
+use crate::{game_state::GameState, player::{ActivePlayer, PlayerMovement}};
 pub struct GameControlPlugin;
 
 impl Plugin for GameControlPlugin{
@@ -37,7 +37,7 @@ pub struct GameControl;
 
 fn direction_input_stopped(
 	_:On<Complete<MovementInput>>,
-	query:Query<&mut Movement, With<ActivePlayer>>,
+	query:Query<&mut PlayerMovement, With<ActivePlayer>>,
 ){
 	//info!("Movement stopped");
 	for mut movement in query{
@@ -50,7 +50,7 @@ fn direction_input_stopped(
 
 fn direction_input_started(
 	direction:On<Fire<MovementInput>>,
-	query:Query<&mut Movement, With<ActivePlayer>>,
+	query:Query<&mut PlayerMovement, With<ActivePlayer>>,
 ){
 	//info!("Movement {}", direction.value);
 	for mut movement in query{
@@ -58,7 +58,7 @@ fn direction_input_started(
 	}
 }
 
-
+//test
 
 fn spawn_controls(
 	mut commands:Commands

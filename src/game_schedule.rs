@@ -5,10 +5,9 @@ pub struct GameSchedulePlugin;
 impl Plugin for GameSchedulePlugin{
 	fn build(&self, app: &mut App) {
 		app
-			.configure_sets(Update, (
-				GameSchedule::PlayerUpdates, 
-				GameSchedule::BallUpdate,
-				GameSchedule::MoveBall,
+			.configure_sets(FixedUpdate, (
+				GameSchedule::PreMovement, 
+				GameSchedule::Movement,
 			).chain()
 			.run_if(in_state(GameState::Playing)))
 		;
@@ -18,7 +17,6 @@ impl Plugin for GameSchedulePlugin{
 
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum GameSchedule{
-  PlayerUpdates,
-	BallUpdate,
-	MoveBall,
+	PreMovement,
+	Movement,
 }
