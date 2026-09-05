@@ -1,6 +1,6 @@
-use std::{f32::consts::PI };
+use std::{f32::consts::PI, time::Duration };
 
-use bevy::{color::palettes::css::{BLACK, BLUE, BROWN, CORAL, DARK_CYAN, GREEN, GREY, MAGENTA, PINK, PURPLE, RED, WHITE, YELLOW}, gltf::GltfMesh, light::NotShadowCaster, math::VectorSpace, prelude::*, world_serialization::WorldInstanceReady};
+use bevy::{color::palettes::css::{BLACK, BLUE, BROWN, CORAL, DARK_CYAN, GREEN, GREY, MAGENTA, PINK, PURPLE, RED, WHITE, YELLOW}, gltf::GltfMesh, light::NotShadowCaster, math::VectorSpace, prelude::*, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
 
 use bevy_prng::WyRand;
@@ -10,7 +10,7 @@ use bevy_rand::global::GlobalRng;
 use rand::seq::IndexedRandom;
 use strum::VariantArray;
 
-use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}, physics::{Collider, ColliderShape, CylinderTarget, Velocity}};
+use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::Ball, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}, physics::{Collider, ColliderShape, CylinderTarget, Velocity}, team::{Team, TeamMember, TeamSide}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_TURN_SPEED: f32 = 3.0;
@@ -32,9 +32,10 @@ impl Plugin for PlayerPlugin{
 				.load_collection::<PlayerAssets>(),
 			)
 			.add_systems(OnEnter(GameState::Initialize), (init_markers, init_player, spawn_players).chain())
-			.add_systems(Update, (update_active_marker, animate_player))
+			.add_systems(Update, (update_active_marker_position, animate_player))
 			.add_systems(FixedUpdate, plan_movement.in_set(GameSchedule::PreMovement))
 			.add_systems(FixedUpdate, do_movement.in_set(GameSchedule::Movement))
+			.add_systems(Update, (check_active_player).run_if(on_timer(Duration::from_secs_f32(0.2))))
 			;
 	}
 }
@@ -46,6 +47,11 @@ pub struct Player{
 	kit:KitConfiguration,
 }
 
+#[derive(Component)]
+pub struct TeamNorth;
+
+#[derive(Component)]
+pub struct TeamSouth;
 
 #[derive(AssetCollection, Resource, Default)]
 pub struct PlayerAssets {
@@ -91,89 +97,68 @@ fn init_player(
 
 fn spawn_players(
 	mut commands: Commands,
+	teams_query:Query<(Entity, &Team)>,
 	player_assets: Res<PlayerAssets>,
 	game_gizmos:Res<GameGizmoStore>,
   mut rng: Single<&mut WyRand, With<GlobalRng>>,
 ){
-let kit_colours = [BLACK, WHITE, RED, GREEN, BLUE, PURPLE, PINK, YELLOW, BROWN, MAGENTA, DARK_CYAN, GREY, CORAL];
 
 
+/*
+	let kit_colours = [BLACK, WHITE, RED, GREEN, BLUE, PURPLE, PINK, YELLOW, BROWN, MAGENTA, DARK_CYAN, GREY, CORAL];
 	let blue_gizomo = game_gizmos.sphere_colours.get(&GizmoColour::Blue).expect("Missing colour gizmo");
 	let red_gizomo = game_gizmos.sphere_colours.get(&GizmoColour::Red).expect("Missing colour gizmo");
 
 	let pink_arrow = game_gizmos.arrow_colours.get(&GizmoColour::Pink).expect("missing pink arrow");
 	let blue_arrow = game_gizmos.arrow_colours.get(&GizmoColour::Blue).expect("missing pink arrow");
 	let red_arrow = game_gizmos.arrow_colours.get(&GizmoColour::Red).expect("missing pink arrow");
+*/
 
-	for i in 0 .. 11{
-
-		let pattern = KitPattern::VARIANTS.choose(&mut rng).unwrap();
-		let primary = kit_colours.choose(&mut rng).unwrap();
-		let secondary = kit_colours.choose(&mut rng).unwrap();
-		let tertiary = kit_colours.choose(&mut rng).unwrap();
+	for (team_entity, team) in teams_query{
+		for i in 0 .. 11{
+			
+			let mut kit = team.kit;	
+			kit.shirt_number = i +1;
 		
-		let kit = KitConfiguration{ 
-			pattern: *pattern,
-			colour_primary: KitColour::from_srgba(*primary), 
-			colour_secondary: KitColour::from_srgba(*secondary), 
-			colour_tertiary: KitColour::from_srgba(*tertiary), 
-			shirt_number: 12 
-		};
+			let (facing, z_pos) = match team.side{
+				crate::team::TeamSide::North => (0., -2.),
+				crate::team::TeamSide::South => (PI, 2.),
+			};
+
+			let id = commands.spawn((
+				Player{ kit },
+				PlayerMovement{ direction: Vec2::ZERO, target_angle: PI * 1.5 + facing, kick_timer: Stopwatch::new()},
+				WorldAssetRoot(player_assets.player_scene.clone()),
+				Transform::default(),
+				PhysicalTranslation(Vec3::new((i as f32 * 2.) - 0.75, 0., z_pos)),
+				Velocity{ direction: Dir3::Y, speed: 0. },
+				PhysicalRotation(Quat::from_rotation_y(facing)),
+				Name::new("Player"),
+				Collider{ 
+					shape: ColliderShape::Cylinder( CylinderTarget{ 
+						direction: Dir3::Y, 
+						radius: PLAYER_COLLISION_RADIUS, 
+						length: PLAYER_HEIGHT
+					}),
+					restitution:PLAYER_RESTITUTION,
+				},
+				TeamMember(team_entity),
+			))
+			.observe(init_player_animations)
+			.observe(init_player_skin)
+			.id();
 
 
-		let id = commands.spawn((
-			Player{ kit },
-			PlayerMovement{ direction: Vec2::ZERO, target_angle: PI * 1.5 },
-			WorldAssetRoot(player_assets.player_scene.clone()),
-			Transform::default(),
-			PhysicalTranslation(Vec3::new((i as f32 * 3.) - 0.75, 0., -1.)),
-			Velocity{ direction: Dir3::Y, speed: 0. },
-			PhysicalRotation(Quat::from_rotation_y(0.)),
-			Name::new("Player"),
-			Collider{ 
-				shape: ColliderShape::Cylinder( CylinderTarget{ 
-					direction: Dir3::Y, 
-					radius: PLAYER_COLLISION_RADIUS, 
-					length: PLAYER_HEIGHT
-				 }),
-				 restitution:PLAYER_RESTITUTION,
-			},
-			/*
-			children![
-						(
-					Gizmo{
-						handle:pink_arrow.clone(),
-						..default()
-					},
-					Transform::from_scale(Vec3::splat(PLAYER_MAX_DRIBBLE_DISTANCE)).with_rotation(Quat::from_axis_angle(Vec3::Y,  PLAYER_DRIBBLE_ANGLE)),
-				),
-				(
-					Gizmo{
-						handle:pink_arrow.clone(),
-						..default()
-					},
-					Transform::from_scale(Vec3::splat(PLAYER_MAX_DRIBBLE_DISTANCE)).with_rotation(Quat::from_axis_angle(Vec3::Y,  -PLAYER_DRIBBLE_ANGLE)),
-				),
-				(
-					Gizmo{
-						handle:red_arrow.clone(),
-						..default()
-					},
-					Transform::from_scale(Vec3::splat(PLAYER_OPTIMAL_DRIBBLE_DISTANCE)),
-				),
-			],
-			 */
-		))
-		.observe(init_player_animations)
-		.observe(init_player_skin)
-		.id();
+			info!("spawned player {}", id);
+			//cheat and make north player 1 active for now
+			if i == 0 && team.side == TeamSide::North{
+				commands.entity(id).insert(ActivePlayer);
+				info!("Player {}", id);
+			}
 
 
-		info!("spawned player {}", id);
-		if i == 0{
-			commands.entity(id).insert(ActivePlayer);
-			info!("Player {}", id);
 		}
+
 	}
 	
 
@@ -226,6 +211,7 @@ pub struct ActivePlayer;
 pub struct PlayerMovement{
 	pub direction:Vec2,
 	target_angle:f32,
+	kick_timer:Stopwatch,
 }
 
 impl PlayerMovement{
@@ -241,7 +227,7 @@ impl PlayerMovement{
 #[derive(Component)]
 pub struct ActiveMarker;
 
-fn update_active_marker(
+fn update_active_marker_position(
 	active_player_query:Query<&GlobalTransform, With<ActivePlayer>>,
 	marker:Single<(&mut Transform, &mut Visibility), With<ActiveMarker>>,
 	time:Res<Time>,
@@ -307,5 +293,12 @@ fn do_movement(
 		//TODO: Collision detection!
 		translation.0 += velocity.direction * velocity.speed * delta;
 	}
+}
+
+fn check_active_player(){
+
+
+
+
 }
 

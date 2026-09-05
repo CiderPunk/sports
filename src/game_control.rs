@@ -1,4 +1,4 @@
-use bevy::{math::VectorSpace, prelude::*};
+use bevy::prelude::*;
 use bevy_enhanced_input::prelude::*;
 
 use crate::{game_state::GameState, player::{ActivePlayer, PlayerMovement}};
@@ -22,7 +22,7 @@ struct MovementInput;
 
 #[derive(InputAction)]
 #[action_output(bool)]
-struct Shoot;
+struct Kick;
 
 
 #[derive(InputAction)]
@@ -31,9 +31,6 @@ struct Pass;
 
 #[derive(Component)]
 pub struct GameControl;
-
-
-
 
 fn direction_input_stopped(
 	_:On<Complete<MovementInput>>,
@@ -46,8 +43,6 @@ fn direction_input_stopped(
 }
 
 
-
-
 fn direction_input_started(
 	direction:On<Fire<MovementInput>>,
 	query:Query<&mut PlayerMovement, With<ActivePlayer>>,
@@ -57,6 +52,19 @@ fn direction_input_started(
 		movement.direction = direction.value;
 	}
 }
+
+
+
+fn kick_started(
+	_:On<Fire<Kick>>,
+	query:Query<&mut PlayerMovement, With<ActivePlayer>>,
+){
+	//info!("Movement stopped");
+	for mut movement in query{
+		movement.direction = Vec2::ZERO;
+	}
+}
+
 
 //test
 
@@ -70,11 +78,12 @@ fn spawn_controls(
 			(
 				Action::<MovementInput>::new(),
 				DeadZone::default(),
-//				Scale::splat(100.0),
 				Bindings::spawn((Cardinal::wasd_keys(), Axial::left_stick(), Cardinal::dpad())),
 			),
+			(
+				Action::<Kick>::new(),
+				bindings![ KeyCode::Space, GamepadButton::South],
+			)
 		]),
 	));
-
-
 }
