@@ -1,9 +1,7 @@
-
+use bevy::{math::FloatPow, prelude::*};
 use std::f32::consts::PI;
-
-use bevy::{color::palettes::css::{BLUE, RED, YELLOW}, math::FloatPow, prelude::*};
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, game_schedule::GameSchedule, game_state::GameState, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, PhysicalProperties, SphereSweep, SphereTarget, Velocity}, player::{ PLAYER_DRIBBLE_ANGLE, PLAYER_HEIGHT, PLAYER_MAX_DRIBBLE_DISTANCE, PLAYER_OPTIMAL_DRIBBLE_DISTANCE, Player, PlayerMovement}};
+use crate::{assets::AssetLoadState, game_schedule::GameSchedule, game_state::GameState, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget, Velocity}, player::{ PLAYER_HEIGHT, Player, PlayerMovement}};
 
 const BALL_SCALE: f32 = 0.5;
 pub const BALL_RADIUS:f32 = 0.25 * BALL_SCALE;
@@ -136,7 +134,7 @@ fn dribble(
 
 		//nearest control point
 		let control_point = translation.0 + (forward.rotate_y(target_angle) * OPTIMAL_CONTROL_DISTANCE).with_y(BALL_GROUND_LEVEL); 
-		gizmos.arrow(control_point, ball_translation.0, RED);
+		gizmos.arrow(control_point, ball_translation.0, bevy::color::palettes::css::RED);
 		let to_control_point = ball_translation.0 - control_point;
 
 		let dist_squared = to_control_point.length_squared();
@@ -160,7 +158,7 @@ fn dribble(
 		//update ball velocity
 		ball_velocity.from_vec3(ball_vec);
 		//candidate.to_control_point
-		gizmos.arrow(ball_translation.0, ball_translation.0 + vel_diff, BLUE);
+		gizmos.arrow(ball_translation.0, ball_translation.0 + vel_diff, bevy::color::palettes::css::BLUE);
 		
 	};
 }

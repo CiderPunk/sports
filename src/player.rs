@@ -1,25 +1,20 @@
 use std::{f32::consts::PI, time::Duration };
 
-use bevy::{color::palettes::css::{BLACK, BLUE, BROWN, CORAL, DARK_CYAN, GREEN, GREY, MAGENTA, PINK, PURPLE, RED, WHITE, YELLOW}, gltf::GltfMesh, light::NotShadowCaster, math::VectorSpace, prelude::*, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
+use bevy::{gltf::GltfMesh, light::NotShadowCaster, prelude::*, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
 
 use bevy_prng::WyRand;
 use bevy_rand::global::GlobalRng;
 
 
-use rand::seq::IndexedRandom;
-use strum::VariantArray;
 
-use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::Ball, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}, physics::{Collider, ColliderShape, CylinderTarget, Velocity}, team::{Team, TeamMember, TeamSide}};
+use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::Ball, game_gizmos::GameGizmoStore, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, physics::{Collider, ColliderShape, CylinderTarget, Velocity}, player, team::{self, PlayerControlled, Team, TeamMember, TeamMembers, TeamSide}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_TURN_SPEED: f32 = 3.0;
 const PLAYER_COLLISION_RADIUS:f32 = 0.5;
 const PLAYER_RESTITUTION:f32 = 0.6;
 pub const PLAYER_HEIGHT:f32 = 1.8;
-pub const PLAYER_MAX_DRIBBLE_DISTANCE:f32 = 1.4;
-pub const PLAYER_OPTIMAL_DRIBBLE_DISTANCE:f32 = 0.7;
-pub const PLAYER_DRIBBLE_ANGLE:f32 = PI * 0.25;
 //pub const PLAYER_DRAW_ANGLE:f32 = PI * 0.5;
 
 pub struct PlayerPlugin;
@@ -40,18 +35,11 @@ impl Plugin for PlayerPlugin{
 	}
 }
 
-
 #[derive(Component,Debug)]
 #[require(PlayerMovement)]
 pub struct Player{
 	kit:KitConfiguration,
 }
-
-#[derive(Component)]
-pub struct TeamNorth;
-
-#[derive(Component)]
-pub struct TeamSouth;
 
 #[derive(AssetCollection, Resource, Default)]
 pub struct PlayerAssets {
@@ -99,8 +87,6 @@ fn spawn_players(
 	mut commands: Commands,
 	teams_query:Query<(Entity, &Team)>,
 	player_assets: Res<PlayerAssets>,
-	game_gizmos:Res<GameGizmoStore>,
-  mut rng: Single<&mut WyRand, With<GlobalRng>>,
 ){
 
 
@@ -152,13 +138,10 @@ fn spawn_players(
 			info!("spawned player {}", id);
 			//cheat and make north player 1 active for now
 			if i == 0 && team.side == TeamSide::North{
-				commands.entity(id).insert(ActivePlayer);
+				//commands.entity(id).insert(ActivePlayer);
 				info!("Player {}", id);
 			}
-
-
 		}
-
 	}
 	
 
@@ -195,8 +178,6 @@ fn init_player_skin(
 	}
 }
 
-
-
 fn init_player_animations(
 	event:On<WorldInstanceReady>,
 	mut anim_manager:AnimationManager<Player>,
@@ -221,9 +202,6 @@ impl PlayerMovement{
 	}
 }
 
-
-
-
 #[derive(Component)]
 pub struct ActiveMarker;
 
@@ -238,13 +216,12 @@ fn update_active_marker_position(
 	}
 	else{
 		for player_transform in active_player_query{
-			transform.translation = (player_transform.translation() + Vec3::new(0.,0.,0.));
+			transform.translation = player_transform.translation() + Vec3::new(0.,0.,0.);
 			transform.rotate_local_y(time.delta_secs());
 			*visible = Visibility::Visible;
 		}
 	}
 }
-
 
 fn animate_player(
 	query:Query<(&PlayerMovement, Entity), With<Player>>,
@@ -295,10 +272,48 @@ fn do_movement(
 	}
 }
 
-fn check_active_player(){
+const ACTIVE_PLAYER_TRANSITION_DISTANCE:f32 = 20.0;
 
+fn check_active_player(
+	mut commands:Commands,
+	ball:Single<(&PhysicalTranslation, &Velocity), With<Ball>>,
+	teams:Query<&TeamMembers, With<PlayerControlled>>,
+	player_query:Query<(&PhysicalTranslation, Option<&ActivePlayer>)>,
+){
+	//info!("check active");
+	let (translation, velocity) = ball.into_inner();
+	//position in half a second
+	let projected_position = translation.0 + velocity.to_vec3() * 0.5;
+	for team_members in &teams{
+		let mut transition = true;
+		let mut closest_entity:Option<Entity> = None;
+		let mut closest_distance = f32::MAX;
+		let mut active_player:Option<Entity> = None;
+		for &team_member in team_members{
 
-
-
+			if let Ok((translation, active)) = player_query.get(team_member){
+				let dist = translation.0.distance_squared(projected_position);
+				if dist < closest_distance{
+					closest_entity = Some(team_member);
+					closest_distance = dist;
+				}
+				if active.is_some(){
+					active_player = Some(team_member);
+					if dist < ACTIVE_PLAYER_TRANSITION_DISTANCE * ACTIVE_PLAYER_TRANSITION_DISTANCE{
+						//looking for new player
+						transition = false;
+					}
+				}
+			}
+		}
+		if transition && closest_entity != active_player{
+			//remove old active
+			if let Some(old_active) = active_player{
+				commands.entity(old_active).remove::<ActivePlayer>();
+			};
+			if let Some(new_active) = closest_entity{
+				commands.entity(new_active).insert(ActivePlayer);
+			}
+		}
+	}
 }
-
