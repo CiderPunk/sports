@@ -6,7 +6,7 @@ impl Plugin for InterpolationPlugin{
 	fn build(&self, app: &mut App) {
 
 		app
-			.add_systems(Update, interpolate_transform)
+			.add_systems(Update, (interpolate_translation, interpolate_rotation))
 			.add_systems(FixedPreUpdate, (store_last_translation, store_last_rotation))
 		;
 	}
@@ -49,21 +49,31 @@ fn store_last_translation(
 	}
 }
 
-fn interpolate_transform(
+fn interpolate_translation(
   fixed_time: Res<Time<Fixed>>,
-	query:Query<
-		(
+	query:Query<(
 			&mut Transform,
-			&PhysicalTranslation, &PreviousTranslation, 
-			Option<&PhysicalRotation>, Option<&PreviousRotation>
+			&PhysicalTranslation, 
+			&PreviousTranslation, 
 		), Without<Static>>,
 ){
 	let fraction = fixed_time.overstep_fraction();
-	for (mut transform, phys_translation, prev_translation, phys_rotation, prev_rotation) in query{	
+	for (mut transform, phys_translation, prev_translation) in query{	
 		transform.translation = prev_translation.0.lerp(phys_translation.0, fraction);
-		if let Some(phys_rotation) = phys_rotation && let Some(prev_rotation) = prev_rotation{
-			transform.rotation =  prev_rotation.0.lerp(phys_rotation.0, fraction)
-		}
+	}
+}
+
+fn interpolate_rotation(
+  fixed_time: Res<Time<Fixed>>,
+	query:Query<(
+			&mut Transform,
+			&PhysicalRotation, 
+			&PreviousRotation,
+		), Without<Static>>,
+){
+	let fraction = fixed_time.overstep_fraction();
+	for (mut transform, phys_rotation, prev_rotation) in query{	
+		transform.rotation =  prev_rotation.0.lerp(phys_rotation.0, fraction)
 	}
 }
 

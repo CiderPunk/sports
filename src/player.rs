@@ -1,25 +1,20 @@
-use std::{f32::consts::PI };
+use std::{f32::consts::PI, time::Duration };
 
-use bevy::{color::palettes::css::{BLACK, BLUE, BROWN, CORAL, DARK_CYAN, GREEN, GREY, MAGENTA, PINK, PURPLE, RED, WHITE, YELLOW}, gltf::GltfMesh, light::NotShadowCaster, math::VectorSpace, prelude::*, world_serialization::WorldInstanceReady};
+use bevy::{gltf::GltfMesh, light::NotShadowCaster, prelude::*, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
 
 use bevy_prng::WyRand;
 use bevy_rand::global::GlobalRng;
 
 
-use rand::seq::IndexedRandom;
-use strum::VariantArray;
 
-use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}, physics::{Collider, ColliderShape, CylinderTarget, Velocity}};
+use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::Ball, game_gizmos::GameGizmoStore, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, physics::{Collider, ColliderShape, CylinderTarget, Velocity}, player, team::{self, PlayerControlled, Team, TeamMember, TeamMembers, TeamSide}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_TURN_SPEED: f32 = 3.0;
 const PLAYER_COLLISION_RADIUS:f32 = 0.5;
 const PLAYER_RESTITUTION:f32 = 0.6;
 pub const PLAYER_HEIGHT:f32 = 1.8;
-pub const PLAYER_MAX_DRIBBLE_DISTANCE:f32 = 1.4;
-pub const PLAYER_OPTIMAL_DRIBBLE_DISTANCE:f32 = 0.7;
-pub const PLAYER_DRIBBLE_ANGLE:f32 = PI * 0.25;
 //pub const PLAYER_DRAW_ANGLE:f32 = PI * 0.5;
 
 pub struct PlayerPlugin;
@@ -32,20 +27,19 @@ impl Plugin for PlayerPlugin{
 				.load_collection::<PlayerAssets>(),
 			)
 			.add_systems(OnEnter(GameState::Initialize), (init_markers, init_player, spawn_players).chain())
-			.add_systems(Update, (update_active_marker, animate_player))
+			.add_systems(Update, (update_active_marker_position, animate_player))
 			.add_systems(FixedUpdate, plan_movement.in_set(GameSchedule::PreMovement))
 			.add_systems(FixedUpdate, do_movement.in_set(GameSchedule::Movement))
+			.add_systems(Update, (check_active_player).run_if(on_timer(Duration::from_secs_f32(0.2))))
 			;
 	}
 }
-
 
 #[derive(Component,Debug)]
 #[require(PlayerMovement)]
 pub struct Player{
 	kit:KitConfiguration,
 }
-
 
 #[derive(AssetCollection, Resource, Default)]
 pub struct PlayerAssets {
@@ -91,88 +85,62 @@ fn init_player(
 
 fn spawn_players(
 	mut commands: Commands,
+	teams_query:Query<(Entity, &Team)>,
 	player_assets: Res<PlayerAssets>,
-	game_gizmos:Res<GameGizmoStore>,
-  mut rng: Single<&mut WyRand, With<GlobalRng>>,
 ){
-let kit_colours = [BLACK, WHITE, RED, GREEN, BLUE, PURPLE, PINK, YELLOW, BROWN, MAGENTA, DARK_CYAN, GREY, CORAL];
 
 
+/*
+	let kit_colours = [BLACK, WHITE, RED, GREEN, BLUE, PURPLE, PINK, YELLOW, BROWN, MAGENTA, DARK_CYAN, GREY, CORAL];
 	let blue_gizomo = game_gizmos.sphere_colours.get(&GizmoColour::Blue).expect("Missing colour gizmo");
 	let red_gizomo = game_gizmos.sphere_colours.get(&GizmoColour::Red).expect("Missing colour gizmo");
 
 	let pink_arrow = game_gizmos.arrow_colours.get(&GizmoColour::Pink).expect("missing pink arrow");
 	let blue_arrow = game_gizmos.arrow_colours.get(&GizmoColour::Blue).expect("missing pink arrow");
 	let red_arrow = game_gizmos.arrow_colours.get(&GizmoColour::Red).expect("missing pink arrow");
+*/
 
-	for i in 0 .. 11{
-
-		let pattern = KitPattern::VARIANTS.choose(&mut rng).unwrap();
-		let primary = kit_colours.choose(&mut rng).unwrap();
-		let secondary = kit_colours.choose(&mut rng).unwrap();
-		let tertiary = kit_colours.choose(&mut rng).unwrap();
+	for (team_entity, team) in teams_query{
+		for i in 0 .. 11{
+			
+			let mut kit = team.kit;	
+			kit.shirt_number = i +1;
 		
-		let kit = KitConfiguration{ 
-			pattern: *pattern,
-			colour_primary: KitColour::from_srgba(*primary), 
-			colour_secondary: KitColour::from_srgba(*secondary), 
-			colour_tertiary: KitColour::from_srgba(*tertiary), 
-			shirt_number: 12 
-		};
+			let (facing, z_pos) = match team.side{
+				crate::team::TeamSide::North => (0., -2.),
+				crate::team::TeamSide::South => (PI, 2.),
+			};
+
+			let id = commands.spawn((
+				Player{ kit },
+				PlayerMovement{ direction: Vec2::ZERO, target_angle: PI * 1.5 + facing, kick_timer: Stopwatch::new()},
+				WorldAssetRoot(player_assets.player_scene.clone()),
+				Transform::default(),
+				PhysicalTranslation(Vec3::new((i as f32 * 2.) - 0.75, 0., z_pos)),
+				Velocity{ direction: Dir3::Y, speed: 0. },
+				PhysicalRotation(Quat::from_rotation_y(facing)),
+				Name::new("Player"),
+				Collider{ 
+					shape: ColliderShape::Cylinder( CylinderTarget{ 
+						direction: Dir3::Y, 
+						radius: PLAYER_COLLISION_RADIUS, 
+						length: PLAYER_HEIGHT
+					}),
+					restitution:PLAYER_RESTITUTION,
+				},
+				TeamMember(team_entity),
+			))
+			.observe(init_player_animations)
+			.observe(init_player_skin)
+			.id();
 
 
-		let id = commands.spawn((
-			Player{ kit },
-			PlayerMovement{ direction: Vec2::ZERO, target_angle: PI * 1.5 },
-			WorldAssetRoot(player_assets.player_scene.clone()),
-			Transform::default(),
-			PhysicalTranslation(Vec3::new((i as f32 * 3.) - 0.75, 0., -1.)),
-			Velocity{ direction: Dir3::Y, speed: 0. },
-			PhysicalRotation(Quat::from_rotation_y(0.)),
-			Name::new("Player"),
-			Collider{ 
-				shape: ColliderShape::Cylinder( CylinderTarget{ 
-					direction: Dir3::Y, 
-					radius: PLAYER_COLLISION_RADIUS, 
-					length: PLAYER_HEIGHT
-				 }),
-				 restitution:PLAYER_RESTITUTION,
-			},
-			/*
-			children![
-						(
-					Gizmo{
-						handle:pink_arrow.clone(),
-						..default()
-					},
-					Transform::from_scale(Vec3::splat(PLAYER_MAX_DRIBBLE_DISTANCE)).with_rotation(Quat::from_axis_angle(Vec3::Y,  PLAYER_DRIBBLE_ANGLE)),
-				),
-				(
-					Gizmo{
-						handle:pink_arrow.clone(),
-						..default()
-					},
-					Transform::from_scale(Vec3::splat(PLAYER_MAX_DRIBBLE_DISTANCE)).with_rotation(Quat::from_axis_angle(Vec3::Y,  -PLAYER_DRIBBLE_ANGLE)),
-				),
-				(
-					Gizmo{
-						handle:red_arrow.clone(),
-						..default()
-					},
-					Transform::from_scale(Vec3::splat(PLAYER_OPTIMAL_DRIBBLE_DISTANCE)),
-				),
-			],
-			 */
-		))
-		.observe(init_player_animations)
-		.observe(init_player_skin)
-		.id();
-
-
-		info!("spawned player {}", id);
-		if i == 0{
-			commands.entity(id).insert(ActivePlayer);
-			info!("Player {}", id);
+			info!("spawned player {}", id);
+			//cheat and make north player 1 active for now
+			if i == 0 && team.side == TeamSide::North{
+				//commands.entity(id).insert(ActivePlayer);
+				info!("Player {}", id);
+			}
 		}
 	}
 	
@@ -210,8 +178,6 @@ fn init_player_skin(
 	}
 }
 
-
-
 fn init_player_animations(
 	event:On<WorldInstanceReady>,
 	mut anim_manager:AnimationManager<Player>,
@@ -226,6 +192,7 @@ pub struct ActivePlayer;
 pub struct PlayerMovement{
 	pub direction:Vec2,
 	target_angle:f32,
+	kick_timer:Stopwatch,
 }
 
 impl PlayerMovement{
@@ -235,13 +202,10 @@ impl PlayerMovement{
 	}
 }
 
-
-
-
 #[derive(Component)]
 pub struct ActiveMarker;
 
-fn update_active_marker(
+fn update_active_marker_position(
 	active_player_query:Query<&GlobalTransform, With<ActivePlayer>>,
 	marker:Single<(&mut Transform, &mut Visibility), With<ActiveMarker>>,
 	time:Res<Time>,
@@ -252,13 +216,12 @@ fn update_active_marker(
 	}
 	else{
 		for player_transform in active_player_query{
-			transform.translation = (player_transform.translation() + Vec3::new(0.,0.,0.));
+			transform.translation = player_transform.translation() + Vec3::new(0.,0.,0.);
 			transform.rotate_local_y(time.delta_secs());
 			*visible = Visibility::Visible;
 		}
 	}
 }
-
 
 fn animate_player(
 	query:Query<(&PlayerMovement, Entity), With<Player>>,
@@ -309,3 +272,48 @@ fn do_movement(
 	}
 }
 
+const ACTIVE_PLAYER_TRANSITION_DISTANCE:f32 = 20.0;
+
+fn check_active_player(
+	mut commands:Commands,
+	ball:Single<(&PhysicalTranslation, &Velocity), With<Ball>>,
+	teams:Query<&TeamMembers, With<PlayerControlled>>,
+	player_query:Query<(&PhysicalTranslation, Option<&ActivePlayer>)>,
+){
+	//info!("check active");
+	let (translation, velocity) = ball.into_inner();
+	//position in half a second
+	let projected_position = translation.0 + velocity.to_vec3() * 0.5;
+	for team_members in &teams{
+		let mut transition = true;
+		let mut closest_entity:Option<Entity> = None;
+		let mut closest_distance = f32::MAX;
+		let mut active_player:Option<Entity> = None;
+		for &team_member in team_members{
+
+			if let Ok((translation, active)) = player_query.get(team_member){
+				let dist = translation.0.distance_squared(projected_position);
+				if dist < closest_distance{
+					closest_entity = Some(team_member);
+					closest_distance = dist;
+				}
+				if active.is_some(){
+					active_player = Some(team_member);
+					if dist < ACTIVE_PLAYER_TRANSITION_DISTANCE * ACTIVE_PLAYER_TRANSITION_DISTANCE{
+						//looking for new player
+						transition = false;
+					}
+				}
+			}
+		}
+		if transition && closest_entity != active_player{
+			//remove old active
+			if let Some(old_active) = active_player{
+				commands.entity(old_active).remove::<ActivePlayer>();
+			};
+			if let Some(new_active) = closest_entity{
+				commands.entity(new_active).insert(ActivePlayer);
+			}
+		}
+	}
+}

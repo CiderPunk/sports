@@ -1,9 +1,7 @@
-
+use bevy::{math::FloatPow, prelude::*};
 use std::f32::consts::PI;
-
-use bevy::{color::palettes::css::{BLUE, RED, YELLOW}, math::FloatPow, prelude::*};
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, game_schedule::GameSchedule, game_state::GameState, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, PhysicalProperties, SphereSweep, SphereTarget, Velocity}, player::{ PLAYER_DRIBBLE_ANGLE, PLAYER_HEIGHT, PLAYER_MAX_DRIBBLE_DISTANCE, PLAYER_OPTIMAL_DRIBBLE_DISTANCE, Player, PlayerMovement}};
+use crate::{assets::AssetLoadState, game_schedule::GameSchedule, game_state::GameState, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget, Velocity}, player::{ PLAYER_HEIGHT, Player, PlayerMovement}};
 
 const BALL_SCALE: f32 = 0.5;
 pub const BALL_RADIUS:f32 = 0.25 * BALL_SCALE;
@@ -136,7 +134,7 @@ fn dribble(
 
 		//nearest control point
 		let control_point = translation.0 + (forward.rotate_y(target_angle) * OPTIMAL_CONTROL_DISTANCE).with_y(BALL_GROUND_LEVEL); 
-		gizmos.arrow(control_point, ball_translation.0, RED);
+		gizmos.arrow(control_point, ball_translation.0, bevy::color::palettes::css::RED);
 		let to_control_point = ball_translation.0 - control_point;
 
 		let dist_squared = to_control_point.length_squared();
@@ -160,72 +158,12 @@ fn dribble(
 		//update ball velocity
 		ball_velocity.from_vec3(ball_vec);
 		//candidate.to_control_point
-		gizmos.arrow(ball_translation.0, ball_translation.0 + vel_diff, BLUE);
+		gizmos.arrow(ball_translation.0, ball_translation.0 + vel_diff, bevy::color::palettes::css::BLUE);
 		
 	};
-
-
 }
 
 
-/*
-fn decide_influence(
-	ball:Single<(&mut Ball, &PhysicalTranslation), Without<Player>>,
-	players:Query<(&PhysicalTranslation, &PhysicalRotation, Entity), With<Player>>,
-	player_movement:Query<&PlayerMovement>,
-){
-	let (mut ball, ball_translation) = ball.into_inner();
-
-	let mut candidates:Vec<_> = players.iter().filter_map(|(player_translation, player_rotation, entity)|{
-
-		let diff = player_translation.0.xz() - ball_translation.0.xz();
-		let dist_squared = diff.length_squared();
-		if dist_squared < PLAYER_MAX_DRIBBLE_DISTANCE * PLAYER_MAX_DRIBBLE_DISTANCE
-			&& player_translation.0.y < ball_translation.0.y 
-			&& player_translation.0.y + PLAYER_HEIGHT > ball_translation.0.y {
-			Some((dist_squared, player_translation.0, player_rotation.0, entity, diff))
-		}
-		else{
-			None
-		}
-	}).collect::<Vec<(f32, Vec3, Quat, Entity, Vec2)>>();
-	//sort by distance
-	candidates.sort_by(|p1,p2| p1.0.total_cmp(&p2.0));
-
-
-	for (len_squared, translation, rotation, entity, diff) in candidates{
-		//vertical filter
-		let forward_2d = (rotation * Dir3::NEG_Z).xz().normalize_or_zero();
-		let dot = diff.dot(forward_2d);
-		//let dot = forward_2d.dot(diff);
-		if dot < -1.{ continue;} // ball behind the player
-		let diff_norm = diff.normalize_or_zero();
-		let angle = forward_2d.angle_to(diff_norm).abs();
-		
-		//within 45 degrees eitherway
-		if angle.abs() < PLAYER_DRIBBLE_ANGLE{
-			//info!("Control!");
-			if let Ok(movement) = player_movement.get(entity){
-				let diff_factor =  (PLAYER_OPTIMAL_DRIBBLE_DISTANCE / len_squared.sqrt()).clamp(0.8, 1.2);
-				//info!("diff:{}", diff_factor);
-				ball.velocity = (movement.velocity() * diff_factor).with_y(ball.velocity.y);
-				ball.control = Vec3::ZERO;
-				ball.last_touch = Some(entity);
-				return;
-			}
-		}
-		else{
-			if ball.control == Vec3::ZERO{
-				let forward_project = -PLAYER_OPTIMAL_DRIBBLE_DISTANCE * forward_2d;
-				let draw_location = Vec3::new(forward_project.x, 0., forward_project.y) + translation;
-				ball.control = (draw_location - ball_translation.0).normalize() * 7.0;
-				ball.last_touch = Some(entity);
-			}
-			//info!("draw {}", ball_motion.dribble_draw);
-		}
-	}
-}
- */
 fn physics(
 	ball:Single<( &mut PhysicalTranslation, &mut Velocity, &mut Rotation), With<Ball>>,
 	time:Res<Time<Fixed>>,
@@ -258,7 +196,6 @@ fn physics(
 	}
 	ball_velocity.from_vec3(velocity);
 	if is_on_ground{
-		info!("updating rotation");
 		if ball_velocity.speed > EPSILON_TOLERANCE{
 			ball_rotation.axis = ball_velocity.direction.cross(Vec3::Y).normalize_or_zero();
 			ball_rotation.speed = ball_velocity.speed / (2. * PI * BALL_RADIUS);
