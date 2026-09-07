@@ -1,14 +1,8 @@
 use std::{f32::consts::PI, time::Duration };
-
 use bevy::{gltf::GltfMesh, light::NotShadowCaster, prelude::*, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
 
-use bevy_prng::WyRand;
-use bevy_rand::global::GlobalRng;
-
-
-
-use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::Ball, game_gizmos::GameGizmoStore, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, physics::{Collider, ColliderShape, CylinderTarget, Velocity}, player, team::{self, PlayerControlled, Team, TeamMember, TeamMembers, TeamSide}};
+use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::Ball, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, physics::{Collider, ColliderShape, CylinderTarget, Velocity}, team::{self, PlayerControlled, Team, TeamMember, TeamMembers, TeamSide}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_TURN_SPEED: f32 = 3.0;
@@ -57,7 +51,6 @@ pub struct PlayerAssets {
 
 	pub cone_marker: Option<Handle<Mesh>>,
 	pub target_marker: Option<Handle<Mesh>>,
-
 }
 
 fn init_markers(
@@ -99,12 +92,30 @@ fn spawn_players(
 	let blue_arrow = game_gizmos.arrow_colours.get(&GizmoColour::Blue).expect("missing pink arrow");
 	let red_arrow = game_gizmos.arrow_colours.get(&GizmoColour::Red).expect("missing pink arrow");
 */
+	//go for a classic 4-3-3 whatever that is!
+	const POSITIONS:[Vec2;11] = [
+		Vec2{ x:-0.6, y:0.9},
+		Vec2{ x:0., y:0.9},
+		Vec2{ x:0.6, y:0.9},
+		//midifeld
+		Vec2{ x:-0.4, y:0.6},
+		Vec2{ x:0.4, y:0.6},
+		Vec2{ x:0., y:0.6},
+		//defenders
+		Vec2{ x:-0.75, y:0.2},
+		Vec2{ x:0.75, y:0.2},
+		Vec2{ x:-0.25, y:0.2},
+		Vec2{ x:0.25, y:0.2},
+		//goalie
+		Vec2{ x:0., y:0.0},
+	];
 
 	for (team_entity, team) in teams_query{
-		for i in 0 .. 11{
+
+		for i in 0usize .. 11{
 			
 			let mut kit = team.kit;	
-			kit.shirt_number = i +1;
+			kit.shirt_number = i as u8 +1;
 		
 			let (facing, z_pos) = match team.side{
 				crate::team::TeamSide::North => (0., -2.),
@@ -128,6 +139,7 @@ fn spawn_players(
 					}),
 					restitution:PLAYER_RESTITUTION,
 				},
+				Position(POSITIONS[i]),
 				TeamMember(team_entity),
 			))
 			.observe(init_player_animations)
@@ -203,7 +215,14 @@ impl PlayerMovement{
 }
 
 #[derive(Component)]
+pub struct Position(Vec2);
+
+#[derive(Component)]
 pub struct ActiveMarker;
+
+
+#[derive(Component)]
+pub struct GoalKeeper;
 
 fn update_active_marker_position(
 	active_player_query:Query<&GlobalTransform, With<ActivePlayer>>,

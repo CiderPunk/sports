@@ -91,8 +91,8 @@ fn spawn_ball(
 			shape: ColliderShape::Sphere( SphereTarget{ radius: BALL_RADIUS }),
 			restitution:BALL_RESTITUTION,
 		},
-		Velocity{ direction: Dir3::X, speed:5. },
-		PhysicalTranslation(Vec3::new(-30., 10. ,0.)),
+		Velocity{ direction: Dir3::X, speed:7.4 },
+		PhysicalTranslation(Vec3::new(-30.,10. ,0.)),
 		PhysicalRotation(Quat::IDENTITY),
 		Rotation { axis: Vec3::X, speed: 0. }
 	));
