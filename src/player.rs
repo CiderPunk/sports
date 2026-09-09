@@ -1,3 +1,4 @@
+use bevy::prelude::*;
 use std::{f32::consts::PI, time::Duration };
 use bevy::{gltf::GltfMesh, light::NotShadowCaster, prelude::*, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
@@ -25,6 +26,7 @@ impl Plugin for PlayerPlugin{
 			.add_systems(FixedUpdate, plan_movement.in_set(GameSchedule::PreMovement))
 			.add_systems(FixedUpdate, do_movement.in_set(GameSchedule::Movement))
 			.add_systems(Update, (check_active_player).run_if(on_timer(Duration::from_secs_f32(0.2))))
+			.add_systems(Update, (position_player).run_if(on_timer(Duration::from_secs_f32(0.1))))
 			;
 	}
 }
@@ -82,16 +84,6 @@ fn spawn_players(
 	player_assets: Res<PlayerAssets>,
 ){
 
-
-/*
-	let kit_colours = [BLACK, WHITE, RED, GREEN, BLUE, PURPLE, PINK, YELLOW, BROWN, MAGENTA, DARK_CYAN, GREY, CORAL];
-	let blue_gizomo = game_gizmos.sphere_colours.get(&GizmoColour::Blue).expect("Missing colour gizmo");
-	let red_gizomo = game_gizmos.sphere_colours.get(&GizmoColour::Red).expect("Missing colour gizmo");
-
-	let pink_arrow = game_gizmos.arrow_colours.get(&GizmoColour::Pink).expect("missing pink arrow");
-	let blue_arrow = game_gizmos.arrow_colours.get(&GizmoColour::Blue).expect("missing pink arrow");
-	let red_arrow = game_gizmos.arrow_colours.get(&GizmoColour::Red).expect("missing pink arrow");
-*/
 	//go for a classic 4-3-3 whatever that is!
 	const POSITIONS:[Vec2;11] = [
 		Vec2{ x:-0.6, y:0.9},
@@ -120,6 +112,7 @@ fn spawn_players(
 			let (facing, z_pos) = match team.side{
 				crate::team::TeamSide::North => (0., -2.),
 				crate::team::TeamSide::South => (PI, 2.),
+				TeamSide::Nnoe => (0.,0.),
 			};
 
 			let id = commands.spawn((
@@ -336,3 +329,9 @@ fn check_active_player(
 		}
 	}
 }
+
+
+fn position_player(
+
+	
+){}

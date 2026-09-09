@@ -16,6 +16,7 @@ impl Plugin for TeamPlugin{
 pub enum TeamSide{
 	North,
 	South,
+	Nnoe,
 }
 
 #[derive(Debug,Component, Clone)]

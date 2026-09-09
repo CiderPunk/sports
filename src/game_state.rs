@@ -20,8 +20,6 @@ impl Plugin for GameStatePlugin{
 }
 
 
-
-
 #[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default, Copy)]
 pub enum GameState {
   #[default]
