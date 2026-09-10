@@ -1,6 +1,6 @@
 use bevy::{math::VectorSpace, prelude::*, render::render_resource::AsBindGroupShaderType};
 
-use crate::{ball::Ball, game_state::GameState, interpolation::PhysicalTranslation, physics::Velocity, team::{TeamMember, TeamSide}};
+use crate::{ball::Ball, game_state::GameState, interpolation::PhysicalTranslation, physics::Velocity, team::{Team, TeamMember}};
  
 pub struct MatchStatePlugin;
 
@@ -16,12 +16,16 @@ impl Plugin for MatchStatePlugin{
 
 
 fn init_match_state(
-	mut commands:Commands,
-		mut match_state:ResMut<MatchState>,
+	mut match_state:ResMut<MatchState>,
+	teams:Query<(Entity, &Team)>,
 ){
 	match_state.match_time = Timer::from_seconds(90., TimerMode::Once);
-
+	//get which team is occupying the top of the pitch
+	if let Some((entity,_)) =  teams.iter().find(|(_, team)| team.top ){
+		match_state.top_team = Some(entity);		
+	}
 }
+
 
 fn update_match_state(
 	mut match_state:ResMut<MatchState>,
@@ -34,6 +38,11 @@ fn update_match_state(
 	let (ball, ball_velocity,  ball_translation) = ball.into_inner();
 	match_state.ball_location = ball_translation.0;
 	match_state.ball_velocity = ball_velocity.to_vec3();
+	match_state.posession = ball.possession
+		.and_then(|player|{ player_team_query.get(player).ok()})
+		.map(|team| team.0);
+
+	/*
 	match_state.posession = match ball.possession{
 			Some(player_entity) => { 
 				if let Ok(team) = player_team_query.get(player_entity) { 
@@ -45,6 +54,7 @@ fn update_match_state(
 			}
 			None => None,
 	};
+	 */
 }
 
 
@@ -54,4 +64,6 @@ pub struct MatchState{
 	ball_location:Vec3,
 	ball_velocity:Vec3,
 	posession:Option<Entity>,
+	top_team:Option<Entity>, //which team is north...
+	
 }

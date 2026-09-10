@@ -3,7 +3,7 @@ use std::{f32::consts::PI, time::Duration };
 use bevy::{gltf::GltfMesh, light::NotShadowCaster, prelude::*, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
 
-use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::Ball, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, physics::{Collider, ColliderShape, CylinderTarget, Velocity}, team::{self, PlayerControlled, Team, TeamMember, TeamMembers, TeamSide}};
+use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::Ball, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, physics::{Collider, ColliderShape, CylinderTarget, Velocity}, team::{self, PlayerControlled, Team, TeamMember, TeamMembers}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_TURN_SPEED: f32 = 3.0;
@@ -109,10 +109,9 @@ fn spawn_players(
 			let mut kit = team.kit;	
 			kit.shirt_number = i as u8 +1;
 		
-			let (facing, z_pos) = match team.side{
-				crate::team::TeamSide::North => (0., -2.),
-				crate::team::TeamSide::South => (PI, 2.),
-				TeamSide::Nnoe => (0.,0.),
+			let (facing, z_pos) = match team.top{
+				true => (0., -2.),
+				false => (PI, 2.),
 			};
 
 			let id = commands.spawn((
@@ -142,7 +141,7 @@ fn spawn_players(
 
 			info!("spawned player {}", id);
 			//cheat and make north player 1 active for now
-			if i == 0 && team.side == TeamSide::North{
+			if i == 0 && team.top{
 				//commands.entity(id).insert(ActivePlayer);
 				info!("Player {}", id);
 			}
