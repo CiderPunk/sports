@@ -61,11 +61,7 @@ pub struct BallAssets {
 
 #[derive(Component, Debug)]
 pub struct Ball{
-	//pub velocity:Vec3,
-	pub control:Vec3,
-	roll_axis:Dir3,
-	roll_speed:f32,
-	last_touch:Option<Entity>,
+	pub possession:Option<Entity>,
 }
 
 
@@ -85,7 +81,7 @@ fn spawn_ball(
 		//Transform::from_translation(Vec3::new(0., BALL_GROUND_LEVEL ,0.)).with_scale(Vec3::splat(BALL_SCALE)),
 		Transform::from_translation(Vec3::new(-30., 10. ,0.)).with_scale(Vec3::splat(BALL_SCALE)),
 		Ball{
-			..default()
+    possession: None,
 		},
 		Collider{ 
 			shape: ColliderShape::Sphere( SphereTarget{ radius: BALL_RADIUS }),
@@ -110,12 +106,12 @@ struct ControlCandidate{
 
 
 fn dribble(
-	ball:Single<( &mut Velocity, &PhysicalTranslation), With<Ball>>,
+	ball:Single<(&mut Ball, &mut Velocity, &PhysicalTranslation)>,
 	players:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, Entity), (With<Player>, Without<Ball>)>,
 	mut gizmos: Gizmos,
 	time:Res<Time<Fixed>>,
 ){
-	let (mut ball_velocity,  ball_translation) = ball.into_inner();
+	let (mut ball, mut ball_velocity,  ball_translation) = ball.into_inner();
 	if ball_translation.0.y > MAX_DRIBBLE_HEIGHT{ return; } //no dribbling high balls!
 	let mut closest:Option<ControlCandidate> = None;
 	
@@ -148,6 +144,9 @@ fn dribble(
 		return;
 	}
 	if let Some(candidate) = closest{
+
+
+		ball.possession = Some(candidate.entity);
 		let mut ball_vec = ball_velocity.to_vec3();
 		let vel_diff = candidate.velocity.to_vec3() - ball_vec;
 		let control_force = -candidate.to_control_point * DISTANCE_MATCH_FACTPR;
@@ -290,16 +289,4 @@ fn do_movement(
 
 
 
-
-impl Default for Ball{
-
-	fn default()-> Self{
-		Self { 
-			control:Vec3::ZERO, 
-			roll_axis: Dir3::Z, 
-			roll_speed: 0., 
-			last_touch:None, 
-		}
-	}
-}
 

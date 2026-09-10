@@ -12,10 +12,11 @@ impl Plugin for TeamPlugin{
 	}
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub enum TeamSide{
 	North,
 	South,
+  #[default]
 	Nnoe,
 }
 
