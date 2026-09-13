@@ -1,5 +1,5 @@
 use core::slice;
-use bevy::{color::palettes::css::{BLACK, BLUE, RED, WHITE}, prelude::*};
+use bevy::{color::palettes::{css::{BLACK, BLUE, DARK_BLUE, LIMEGREEN, RED, WHITE, YELLOW}, tailwind::GRAY_700}, prelude::*};
 use crate::kit::{KitColour, KitConfiguration};
 
 pub struct TeamPlugin;
@@ -18,6 +18,7 @@ pub struct Team{
 	pub top:bool,
 	pub name:String, 
 	pub kit:KitConfiguration,
+	pub goalie_kit:KitConfiguration,
 }
 
 #[derive(Component)]
@@ -53,9 +54,16 @@ fn init_teams(
 			kit:KitConfiguration { 
 				pattern: crate::kit::KitPattern::Quatered, 
 				colour_primary: KitColour::from_srgba(RED),
-				colour_secondary: KitColour::from_srgba(BLACK),
+				colour_secondary: KitColour::from_srgba(GRAY_700),
 				colour_tertiary: KitColour::from_srgba(WHITE), 
 				shirt_number: 1 
+			},
+			goalie_kit:KitConfiguration { 
+				pattern: crate::kit::KitPattern::Solid, 
+				colour_primary: KitColour::from_srgba(YELLOW),
+				colour_secondary: KitColour::from_srgba(YELLOW),
+				colour_tertiary: KitColour::from_srgba(RED),  
+				shirt_number: 1
 			},
 		}
 	));
@@ -66,9 +74,16 @@ fn init_teams(
 			kit:KitConfiguration { 
 				pattern: crate::kit::KitPattern::Solid, 
 				colour_primary: KitColour::from_srgba(BLUE),
-				colour_secondary: KitColour::from_srgba(BLACK),
+				colour_secondary: KitColour::from_srgba(DARK_BLUE),
 				colour_tertiary: KitColour::from_srgba(WHITE), 
 				shirt_number: 1 
+			},
+			goalie_kit:KitConfiguration { 
+				pattern: crate::kit::KitPattern::Solid, 
+				colour_primary: KitColour::from_srgba(LIMEGREEN),
+				colour_secondary: KitColour::from_srgba(LIMEGREEN),
+				colour_tertiary: KitColour::from_srgba(BLUE),  
+				shirt_number: 1
 			},
 		}
 	);

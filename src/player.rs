@@ -124,9 +124,14 @@ fn spawn_players(
 
 		for i in 0usize .. 11{
 			
+
+
 			let mut kit = team.kit;	
 			kit.shirt_number = i as u8 +1;
-		
+			if i == 10{
+				kit = team.goalie_kit;
+			}
+
 			let (facing, z_pos) = match team.top{
 				true => (0., -2.),
 				false => (PI, 2.),
@@ -152,7 +157,6 @@ fn spawn_players(
 				Position(POSITIONS[i]),
 				TeamMember(team_entity),
 				Thinker,
-				
 			))
 			.observe(init_player_animations)
 			.observe(init_player_skin)
@@ -215,7 +219,7 @@ fn init_player_animations(
 pub struct PlayerMovement{
 	pub direction:Vec2,
 	target_rotation:Quat,
-	kick_timer:Stopwatch,
+	pub kick_timer:Stopwatch,
 }
 
 impl PlayerMovement{
@@ -380,8 +384,6 @@ fn player_think(
 		}
 		else{
 			movement.direction = Vec2::ZERO;
-			//movement.target_angle = 
-
 		}
 
 
