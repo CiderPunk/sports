@@ -3,7 +3,7 @@ use std::{f32::consts::PI, time::Duration };
 use bevy::{gltf::GltfMesh, light::NotShadowCaster, prelude::*, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
 
-use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::Ball, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, physics::{Collider, ColliderShape, CylinderTarget, Velocity}, team::{self, PlayerControlled, Team, TeamMember, TeamMembers}};
+use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::Ball, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, match_state::MatchState, physics::{Collider, ColliderShape, CylinderTarget, Velocity}, team::{self, PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_TURN_SPEED: f32 = 3.0;
@@ -24,9 +24,8 @@ impl Plugin for PlayerPlugin{
 			.add_systems(OnEnter(GameState::Initialize), (init_markers, init_player, spawn_players).chain())
 			.add_systems(Update, (update_active_marker_position, animate_player))
 			.add_systems(FixedUpdate, plan_movement.in_set(GameSchedule::PreMovement))
-			.add_systems(FixedUpdate, do_movement.in_set(GameSchedule::Movement))
+			.add_systems(FixedUpdate, (player_think, do_movement).in_set(GameSchedule::Movement))
 			.add_systems(Update, (check_active_player).run_if(on_timer(Duration::from_secs_f32(0.2))))
-			.add_systems(Update, (position_player).run_if(on_timer(Duration::from_secs_f32(0.1))))
 			;
 	}
 }
@@ -36,6 +35,25 @@ impl Plugin for PlayerPlugin{
 pub struct Player{
 	kit:KitConfiguration,
 }
+
+
+#[derive(Component)]
+pub struct ActivePlayer;
+
+#[derive(Component)]
+pub struct Position(Vec2);
+
+#[derive(Component)]
+pub struct ActiveMarker;
+
+
+#[derive(Component)]
+pub struct GoalKeeper;
+
+
+#[derive(Component)]
+pub struct ThinkTime(Timer);
+
 
 #[derive(AssetCollection, Resource, Default)]
 pub struct PlayerAssets {
@@ -133,6 +151,8 @@ fn spawn_players(
 				},
 				Position(POSITIONS[i]),
 				TeamMember(team_entity),
+				Thinker,
+				
 			))
 			.observe(init_player_animations)
 			.observe(init_player_skin)
@@ -189,8 +209,7 @@ fn init_player_animations(
 	anim_manager.attach_animation(event.entity, 0);
 }
 
-#[derive(Component)]
-pub struct ActivePlayer;
+
 
 #[derive(Component, Debug, Default)]
 pub struct PlayerMovement{
@@ -206,15 +225,7 @@ impl PlayerMovement{
 	}
 }
 
-#[derive(Component)]
-pub struct Position(Vec2);
 
-#[derive(Component)]
-pub struct ActiveMarker;
-
-
-#[derive(Component)]
-pub struct GoalKeeper;
 
 fn update_active_marker_position(
 	active_player_query:Query<&GlobalTransform, With<ActivePlayer>>,
@@ -329,8 +340,26 @@ fn check_active_player(
 	}
 }
 
+fn player_think(
+	match_state:Res<MatchState>,
+	players:Query<(&PhysicalTranslation, &TeamMember, &Position, &mut PlayerMovement), (With<Player>, With<ThinkNext>, Without<ActivePlayer>)>,
+	time:Res<Time<Fixed>>,
+){
+	for (translation, team, position,  mut movement) in players{
+		//are we top or bottom
+		let top = match_state.top_team == Some(team.0);
+		let side_multiplier = if top { 1.} else { -1.};
+		
+		//are we defending
+		//let defending = match_state.posession == Some(team.0);	
+		let ball_loc = match_state.ball_location.z;
+		let position_depth = match_state.half_length + (ball_loc * side_multiplier); 
 
-fn position_player(
+		let target_position = Vec3::new(position.0.x * match_state.half_width, 0.,(position_depth * position.0.y) - match_state.half_length);
 
-	
-){}
+		let diff =translation.0 - target_position;
+		movement.direction = diff.xz().normalize_or_zero();
+		movement.target_angle = movement.direction.to_angle();
+
+	}
+}

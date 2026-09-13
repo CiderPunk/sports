@@ -1,6 +1,6 @@
 use bevy::{math::VectorSpace, prelude::*, render::render_resource::AsBindGroupShaderType};
 
-use crate::{ball::Ball, game_state::GameState, interpolation::PhysicalTranslation, physics::Velocity, team::{Team, TeamMember}};
+use crate::{ball::Ball, game_state::GameState, interpolation::PhysicalTranslation, physics::Velocity, pitch::PitchConfiguration, team::{Team, TeamMember}};
  
 pub struct MatchStatePlugin;
 
@@ -18,12 +18,15 @@ impl Plugin for MatchStatePlugin{
 fn init_match_state(
 	mut match_state:ResMut<MatchState>,
 	teams:Query<(Entity, &Team)>,
+	pitch_config:Res<PitchConfiguration>,
 ){
 	match_state.match_time = Timer::from_seconds(90., TimerMode::Once);
 	//get which team is occupying the top of the pitch
 	if let Some((entity,_)) =  teams.iter().find(|(_, team)| team.top ){
 		match_state.top_team = Some(entity);		
 	}
+	match_state.half_length = pitch_config.length * 0.5;
+	match_state.half_width = pitch_config.width * 0.5;
 }
 
 
@@ -60,10 +63,11 @@ fn update_match_state(
 
 #[derive(Resource, Debug, Default)]
 pub struct MatchState{
-	match_time:Timer,
-	ball_location:Vec3,
-	ball_velocity:Vec3,
-	posession:Option<Entity>,
-	top_team:Option<Entity>, //which team is north...
-	
+	pub match_time:Timer,
+	pub ball_location:Vec3,
+	pub ball_velocity:Vec3,
+	pub posession:Option<Entity>,
+	pub top_team:Option<Entity>, //which team is north...
+	pub half_length:f32,
+	pub half_width:f32,
 }
