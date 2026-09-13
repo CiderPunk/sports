@@ -1,14 +1,9 @@
+use bevy::{math::VectorSpace, prelude::*};
 use std::{f32::consts::PI, time::Duration };
-
 use bevy::{gltf::GltfMesh, light::NotShadowCaster, prelude::*, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
 
-use bevy_prng::WyRand;
-use bevy_rand::global::GlobalRng;
-
-
-
-use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::Ball, game_gizmos::GameGizmoStore, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, physics::{Collider, ColliderShape, CylinderTarget, Velocity}, player, team::{self, PlayerControlled, Team, TeamMember, TeamMembers, TeamSide}};
+use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::Ball, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, match_state::MatchState, physics::{Collider, ColliderShape, CylinderTarget, Velocity}, team::{self, PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_TURN_SPEED: f32 = 3.0;
@@ -29,7 +24,7 @@ impl Plugin for PlayerPlugin{
 			.add_systems(OnEnter(GameState::Initialize), (init_markers, init_player, spawn_players).chain())
 			.add_systems(Update, (update_active_marker_position, animate_player))
 			.add_systems(FixedUpdate, plan_movement.in_set(GameSchedule::PreMovement))
-			.add_systems(FixedUpdate, do_movement.in_set(GameSchedule::Movement))
+			.add_systems(FixedUpdate, (player_think, do_movement).in_set(GameSchedule::Movement))
 			.add_systems(Update, (check_active_player).run_if(on_timer(Duration::from_secs_f32(0.2))))
 			;
 	}
@@ -40,6 +35,25 @@ impl Plugin for PlayerPlugin{
 pub struct Player{
 	kit:KitConfiguration,
 }
+
+
+#[derive(Component)]
+pub struct ActivePlayer;
+
+#[derive(Component)]
+pub struct Position(Vec2);
+
+#[derive(Component)]
+pub struct ActiveMarker;
+
+
+#[derive(Component)]
+pub struct GoalKeeper;
+
+
+#[derive(Component)]
+pub struct ThinkTime(Timer);
+
 
 #[derive(AssetCollection, Resource, Default)]
 pub struct PlayerAssets {
@@ -57,7 +71,6 @@ pub struct PlayerAssets {
 
 	pub cone_marker: Option<Handle<Mesh>>,
 	pub target_marker: Option<Handle<Mesh>>,
-
 }
 
 fn init_markers(
@@ -89,31 +102,39 @@ fn spawn_players(
 	player_assets: Res<PlayerAssets>,
 ){
 
-
-/*
-	let kit_colours = [BLACK, WHITE, RED, GREEN, BLUE, PURPLE, PINK, YELLOW, BROWN, MAGENTA, DARK_CYAN, GREY, CORAL];
-	let blue_gizomo = game_gizmos.sphere_colours.get(&GizmoColour::Blue).expect("Missing colour gizmo");
-	let red_gizomo = game_gizmos.sphere_colours.get(&GizmoColour::Red).expect("Missing colour gizmo");
-
-	let pink_arrow = game_gizmos.arrow_colours.get(&GizmoColour::Pink).expect("missing pink arrow");
-	let blue_arrow = game_gizmos.arrow_colours.get(&GizmoColour::Blue).expect("missing pink arrow");
-	let red_arrow = game_gizmos.arrow_colours.get(&GizmoColour::Red).expect("missing pink arrow");
-*/
+	//go for a classic 4-3-3 whatever that is!
+	const POSITIONS:[Vec2;11] = [
+		Vec2{ x:-0.8, y:0.9},
+		Vec2{ x:0., y:0.9},
+		Vec2{ x:0.8, y:0.9},
+		//midifeld
+		Vec2{ x:-0.4, y:0.6},
+		Vec2{ x:0.4, y:0.6},
+		Vec2{ x:0., y:0.6},
+		//defenders
+		Vec2{ x:-0.75, y:0.2},
+		Vec2{ x:0.75, y:0.2},
+		Vec2{ x:-0.25, y:0.2},
+		Vec2{ x:0.25, y:0.2},
+		//goalie
+		Vec2{ x:0., y:0.05},
+	];
 
 	for (team_entity, team) in teams_query{
-		for i in 0 .. 11{
+
+		for i in 0usize .. 11{
 			
 			let mut kit = team.kit;	
-			kit.shirt_number = i +1;
+			kit.shirt_number = i as u8 +1;
 		
-			let (facing, z_pos) = match team.side{
-				crate::team::TeamSide::North => (0., -2.),
-				crate::team::TeamSide::South => (PI, 2.),
+			let (facing, z_pos) = match team.top{
+				true => (0., -2.),
+				false => (PI, 2.),
 			};
 
 			let id = commands.spawn((
 				Player{ kit },
-				PlayerMovement{ direction: Vec2::ZERO, target_angle: PI * 1.5 + facing, kick_timer: Stopwatch::new()},
+				PlayerMovement{ direction: Vec2::ZERO, target_rotation:Quat::from_axis_angle(Vec3::Y, PI), kick_timer: Stopwatch::new()},
 				WorldAssetRoot(player_assets.player_scene.clone()),
 				Transform::default(),
 				PhysicalTranslation(Vec3::new((i as f32 * 2.) - 0.75, 0., z_pos)),
@@ -128,7 +149,10 @@ fn spawn_players(
 					}),
 					restitution:PLAYER_RESTITUTION,
 				},
+				Position(POSITIONS[i]),
 				TeamMember(team_entity),
+				Thinker,
+				
 			))
 			.observe(init_player_animations)
 			.observe(init_player_skin)
@@ -137,7 +161,7 @@ fn spawn_players(
 
 			info!("spawned player {}", id);
 			//cheat and make north player 1 active for now
-			if i == 0 && team.side == TeamSide::North{
+			if i == 0 && team.top{
 				//commands.entity(id).insert(ActivePlayer);
 				info!("Player {}", id);
 			}
@@ -185,13 +209,12 @@ fn init_player_animations(
 	anim_manager.attach_animation(event.entity, 0);
 }
 
-#[derive(Component)]
-pub struct ActivePlayer;
+
 
 #[derive(Component, Debug, Default)]
 pub struct PlayerMovement{
 	pub direction:Vec2,
-	target_angle:f32,
+	target_rotation:Quat,
 	kick_timer:Stopwatch,
 }
 
@@ -202,8 +225,7 @@ impl PlayerMovement{
 	}
 }
 
-#[derive(Component)]
-pub struct ActiveMarker;
+
 
 fn update_active_marker_position(
 	active_player_query:Query<&GlobalTransform, With<ActivePlayer>>,
@@ -244,12 +266,13 @@ fn plan_movement(
 	time:Res<Time<Fixed>>,
 ){
 	let delta = time.delta_secs();
+
 	for (mut movement, mut velocity, mut rotation) in query{
-		rotation.0 = rotation.0.rotate_towards(Quat::from_axis_angle(Vec3::Y, movement.target_angle + (PI * 0.5)).normalize(), delta * PLAYER_TURN_SPEED *  PI);
-		if movement.direction != Vec2::ZERO{
-			movement.target_angle = movement.direction.to_angle();
-		}
-		if let Ok((dir, length)) =  Dir3::new_and_length(Vec3::new(movement.direction.x, 0., -movement.direction.y)){
+		rotation.0 = rotation.0.rotate_towards(movement.target_rotation, delta * PLAYER_TURN_SPEED * PI);
+  	let movement_3d = Vec3::new(movement.direction.x, 0.0, movement.direction.y);
+
+		if let Ok((dir, length)) =  Dir3::new_and_length(movement_3d){
+			movement.target_rotation = Quat::from_rotation_arc(Vec3::Z, dir.xyz());
 			velocity.speed = length * PLAYER_SPEED;
 			velocity.direction = dir;
 		}
@@ -315,5 +338,41 @@ fn check_active_player(
 				commands.entity(new_active).insert(ActivePlayer);
 			}
 		}
+	}
+}
+
+
+const POSITION_VARIANCE:f32 = 3.;
+
+
+fn player_think(
+	match_state:Res<MatchState>,
+	players:Query<(&PhysicalTranslation, &TeamMember, &Position, &mut PlayerMovement), (With<Player>, With<ThinkNext>, Without<ActivePlayer>)>,
+	time:Res<Time<Fixed>>,
+){
+	for (translation, team, position,  mut movement) in players{
+		//are we top or bottom
+		let top = match_state.top_team == Some(team.0);
+		let side_multiplier = if top { 1.} else { -1.};
+		
+		//are we defending
+		let attacking = match_state.posession == Some(team.0);	
+		let ball_loc = match_state.ball_location.z;
+		let position_depth = match_state.half_length + (ball_loc * side_multiplier); 
+		let target_position = Vec2::new(position.0.x * match_state.half_width,  ((position_depth * position.0.y)- match_state.half_length)* side_multiplier);
+		let diff = target_position - translation.0.xz();
+
+		if diff.length_squared() > POSITION_VARIANCE * POSITION_VARIANCE{
+			movement.direction = diff.normalize_or_zero();
+			//movement.target_angle = movement.direction.to_angle();
+			info!("moving to target:{} position:{} movement:{} diff:{} attacking:{} top:{}",target_position, position.0, movement.direction, diff, attacking, top );
+		}
+		else{
+			movement.direction = Vec2::ZERO;
+			//movement.target_angle = 
+
+		}
+
+
 	}
 }

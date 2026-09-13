@@ -55,7 +55,7 @@ fn direction_input_started(
 	if let Ok(team) = context.get(direction.context){
 		for (mut movement, active_player_team) in query{
 			if team.0 == active_player_team.0{
-				movement.direction = direction.value;
+				movement.direction = Vec2::new(direction.value.x, -direction.value.y);
 			}
 		}
 	}

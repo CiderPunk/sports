@@ -12,15 +12,10 @@ impl Plugin for TeamPlugin{
 	}
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum TeamSide{
-	North,
-	South,
-}
 
 #[derive(Debug,Component, Clone)]
 pub struct Team{
-	pub side:TeamSide,
+	pub top:bool,
 	pub name:String, 
 	pub kit:KitConfiguration,
 }
@@ -53,7 +48,7 @@ fn init_teams(
 	commands.spawn((
 		PlayerControlled,
 		Team{
-			side: TeamSide::North,
+			top: true,
 			name: String::from("Reds"),
 			kit:KitConfiguration { 
 				pattern: crate::kit::KitPattern::Quatered, 
@@ -66,7 +61,7 @@ fn init_teams(
 	));
 	commands.spawn(
 		Team{
-			side: TeamSide::South,
+			top:false,
 			name: String::from("Blues"),
 			kit:KitConfiguration { 
 				pattern: crate::kit::KitPattern::Solid, 
