@@ -6,6 +6,9 @@ use crate::ball::Ball;
 
 
 const CAMERA_OFFSET:Vec3 = Vec3::new(0.,100.,80.);
+
+//const CAMERA_OFFSET:Vec3 = Vec3::new(0.,300.,80.);
+
 //const CAMERA_OFFSET:Vec3 = Vec3::new(0.,60.,60.);
 
 pub struct GameCameraPlugin;

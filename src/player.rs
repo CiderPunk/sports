@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use bevy::{math::VectorSpace, prelude::*};
 use std::{f32::consts::PI, time::Duration };
 use bevy::{gltf::GltfMesh, light::NotShadowCaster, prelude::*, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
@@ -104,9 +104,9 @@ fn spawn_players(
 
 	//go for a classic 4-3-3 whatever that is!
 	const POSITIONS:[Vec2;11] = [
-		Vec2{ x:-0.6, y:0.9},
+		Vec2{ x:-0.8, y:0.9},
 		Vec2{ x:0., y:0.9},
-		Vec2{ x:0.6, y:0.9},
+		Vec2{ x:0.8, y:0.9},
 		//midifeld
 		Vec2{ x:-0.4, y:0.6},
 		Vec2{ x:0.4, y:0.6},
@@ -117,7 +117,7 @@ fn spawn_players(
 		Vec2{ x:-0.25, y:0.2},
 		Vec2{ x:0.25, y:0.2},
 		//goalie
-		Vec2{ x:0., y:0.0},
+		Vec2{ x:0., y:0.05},
 	];
 
 	for (team_entity, team) in teams_query{
@@ -134,7 +134,7 @@ fn spawn_players(
 
 			let id = commands.spawn((
 				Player{ kit },
-				PlayerMovement{ direction: Vec2::ZERO, target_angle: PI * 1.5 + facing, kick_timer: Stopwatch::new()},
+				PlayerMovement{ direction: Vec2::ZERO, target_rotation:Quat::from_axis_angle(Vec3::Y, PI), kick_timer: Stopwatch::new()},
 				WorldAssetRoot(player_assets.player_scene.clone()),
 				Transform::default(),
 				PhysicalTranslation(Vec3::new((i as f32 * 2.) - 0.75, 0., z_pos)),
@@ -214,7 +214,7 @@ fn init_player_animations(
 #[derive(Component, Debug, Default)]
 pub struct PlayerMovement{
 	pub direction:Vec2,
-	target_angle:f32,
+	target_rotation:Quat,
 	kick_timer:Stopwatch,
 }
 
@@ -266,12 +266,13 @@ fn plan_movement(
 	time:Res<Time<Fixed>>,
 ){
 	let delta = time.delta_secs();
+
 	for (mut movement, mut velocity, mut rotation) in query{
-		rotation.0 = rotation.0.rotate_towards(Quat::from_axis_angle(Vec3::Y, movement.target_angle + (PI * 0.5)).normalize(), delta * PLAYER_TURN_SPEED *  PI);
-		if movement.direction != Vec2::ZERO{
-			movement.target_angle = movement.direction.to_angle();
-		}
-		if let Ok((dir, length)) =  Dir3::new_and_length(Vec3::new(movement.direction.x, 0., -movement.direction.y)){
+		rotation.0 = rotation.0.rotate_towards(movement.target_rotation, delta * PLAYER_TURN_SPEED * PI);
+  	let movement_3d = Vec3::new(movement.direction.x, 0.0, movement.direction.y);
+
+		if let Ok((dir, length)) =  Dir3::new_and_length(movement_3d){
+			movement.target_rotation = Quat::from_rotation_arc(Vec3::Z, dir.xyz());
 			velocity.speed = length * PLAYER_SPEED;
 			velocity.direction = dir;
 		}
@@ -340,6 +341,10 @@ fn check_active_player(
 	}
 }
 
+
+const POSITION_VARIANCE:f32 = 3.;
+
+
 fn player_think(
 	match_state:Res<MatchState>,
 	players:Query<(&PhysicalTranslation, &TeamMember, &Position, &mut PlayerMovement), (With<Player>, With<ThinkNext>, Without<ActivePlayer>)>,
@@ -351,15 +356,23 @@ fn player_think(
 		let side_multiplier = if top { 1.} else { -1.};
 		
 		//are we defending
-		//let defending = match_state.posession == Some(team.0);	
+		let attacking = match_state.posession == Some(team.0);	
 		let ball_loc = match_state.ball_location.z;
 		let position_depth = match_state.half_length + (ball_loc * side_multiplier); 
+		let target_position = Vec2::new(position.0.x * match_state.half_width,  ((position_depth * position.0.y)- match_state.half_length)* side_multiplier);
+		let diff = target_position - translation.0.xz();
 
-		let target_position = Vec3::new(position.0.x * match_state.half_width, 0.,(position_depth * position.0.y) - match_state.half_length);
+		if diff.length_squared() > POSITION_VARIANCE * POSITION_VARIANCE{
+			movement.direction = diff.normalize_or_zero();
+			//movement.target_angle = movement.direction.to_angle();
+			info!("moving to target:{} position:{} movement:{} diff:{} attacking:{} top:{}",target_position, position.0, movement.direction, diff, attacking, top );
+		}
+		else{
+			movement.direction = Vec2::ZERO;
+			//movement.target_angle = 
 
-		let diff =translation.0 - target_position;
-		movement.direction = diff.xz().normalize_or_zero();
-		movement.target_angle = movement.direction.to_angle();
+		}
+
 
 	}
 }
