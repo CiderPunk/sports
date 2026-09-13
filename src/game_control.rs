@@ -64,12 +64,16 @@ fn direction_input_started(
 
 
 fn kick_started(
-	_:On<Fire<Kick>>,
-	query:Query<&mut PlayerMovement, With<ActivePlayer>>,
+	event:On<Fire<MovementInput>>,
+	context:Query<&TeamInputController>,
+	query:Query<(&mut PlayerMovement, &TeamMember), With<ActivePlayer>>,
 ){
-	//info!("Movement stopped");
-	for mut movement in query{
-		movement.direction = Vec2::ZERO;
+	if let Ok(team) = context.get(event.context){
+		for (mut movement, active_player_team) in query{
+			if team.0 == active_player_team.0{
+				
+			}
+		}
 	}
 }
 
