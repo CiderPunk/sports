@@ -139,7 +139,7 @@ fn spawn_players(
 
 			let id = commands.spawn((
 				Player{ kit },
-				PlayerMovement{ direction: Vec2::ZERO, target_rotation:Quat::from_axis_angle(Vec3::Y, PI), kick_timer: Stopwatch::new()},
+				PlayerMovement{ direction: Vec2::ZERO, target_rotation:Quat::from_axis_angle(Vec3::Y, PI), kick_timer: Stopwatch::new(), kick:false },
 				WorldAssetRoot(player_assets.player_scene.clone()),
 				Transform::default(),
 				PhysicalTranslation(Vec3::new((i as f32 * 2.) - 0.75, 0., z_pos)),
@@ -219,6 +219,7 @@ fn init_player_animations(
 pub struct PlayerMovement{
 	pub direction:Vec2,
 	target_rotation:Quat,
+	pub kick:bool,
 	pub kick_timer:Stopwatch,
 }
 
@@ -354,7 +355,6 @@ const POSITION_REDUCED_SPEED_FACTOR:f32 = 0.6;
 fn player_think(
 	match_state:Res<MatchState>,
 	players:Query<(&PhysicalTranslation, &TeamMember, &Position, &mut PlayerMovement), (With<Player>, With<ThinkNext>, Without<ActivePlayer>)>,
-	time:Res<Time<Fixed>>,
 ){
 	for (translation, team, position,  mut movement) in players{
 		//are we top or bottom
@@ -366,9 +366,9 @@ fn player_think(
 		let ball_loc = match_state.ball_location.z;
 		let mut position_depth = match_state.half_length + (ball_loc * side_multiplier); 
 		if attacking{
-			position_depth *= 1.2;
+			position_depth *= 1.5;
 		}
-		position_depth = position_depth.clamp(0.2 * match_state.half_length, 1.9 * match_state.half_length);
+		position_depth = position_depth.clamp(0.2 * match_state.half_length, 1.95 * match_state.half_length);
 
 		let target_position = Vec2::new(position.0.x * match_state.half_width,  ((position_depth * position.0.y)- match_state.half_length)* side_multiplier);
 		let diff = target_position - translation.0.xz();
@@ -384,6 +384,11 @@ fn player_think(
 		}
 		else{
 			movement.direction = Vec2::ZERO;
+
+			let diff = match_state.ball_location.with_y(0.) - translation.0.with_y(0.);
+
+			movement.target_rotation = Quat::from_rotation_arc(Vec3::Z, diff.normalize_or_zero());
+			//movement.target_rotation = Quat::look_at_lh(translation.0, match_state.ball_location, Vec3::Y);
 		}
 
 
