@@ -7,8 +7,7 @@ pub struct AnimationManagerPlugin;
 impl Plugin for AnimationManagerPlugin {
 	fn build(&self, app: &mut App) {
 		//app.add_systems(Update, restart_visible_animations)
-		;
-		
+
 
 
 	}
