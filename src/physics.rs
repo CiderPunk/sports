@@ -270,7 +270,7 @@ impl Collidable for SphereTarget{
 		let b = vec_sphere.dot(velocity);
 		let c = vec_sphere.length_squared() - total_radius.squared();
 
-		let discriminant = (b * b - 4.0 * a * c);
+		let discriminant = b * b - 4.0 * a * c;
 		if discriminant < 0. { return None;} 
 		let discriminant_sqrt = discriminant.sqrt();
 		let t1 = (-b - discriminant_sqrt) / (2. * a);
