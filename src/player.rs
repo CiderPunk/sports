@@ -3,7 +3,7 @@ use std::{f32::consts::PI, time::Duration };
 use bevy::{gltf::GltfMesh, light::NotShadowCaster, prelude::*, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
 
-use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::Ball, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, match_state::MatchState, physics::{Collider, ColliderShape, CylinderTarget, Velocity}, team::{self, PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
+use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{Ball, MAX_INTERACTION_DISTANCE_SQUARED}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, match_state::MatchState, physics::{Collider, ColliderShape, CylinderTarget, Velocity}, team::{self, PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_TURN_SPEED: f32 = 3.0;
@@ -53,6 +53,25 @@ pub struct GoalKeeper;
 
 #[derive(Component)]
 pub struct ThinkTime(Timer);
+
+
+#[derive(EntityEvent)]
+pub struct PlayerIntentEvent{
+	entity:Entity,
+	intent:PlayerIntent,
+}
+
+
+#[derive(EntityEvent)]
+pub struct PlayerContextEvent{
+	entity:Entity,
+}
+
+
+pub enum PlayerIntent{
+	Pass,
+	Shoot (f32),
+}
 
 
 #[derive(AssetCollection, Resource, Default)]
@@ -124,8 +143,6 @@ fn spawn_players(
 
 		for i in 0usize .. 11{
 			
-
-
 			let mut kit = team.kit;	
 			kit.shirt_number = i as u8 +1;
 			if i == 10{
@@ -160,6 +177,9 @@ fn spawn_players(
 			))
 			.observe(init_player_animations)
 			.observe(init_player_skin)
+			.observe(player_intent_event)
+			.observe(player_context_event)
+			
 			.id();
 
 
@@ -230,8 +250,6 @@ impl PlayerMovement{
 	}
 }
 
-
-
 fn update_active_marker_position(
 	active_player_query:Query<&GlobalTransform, With<ActivePlayer>>,
 	marker:Single<(&mut Transform, &mut Visibility), With<ActiveMarker>>,
@@ -266,13 +284,16 @@ fn animate_player(
 	}
 }
 
+//maximum button hold time for max power
+const MAX_POWER_HOLD:f32 = 0.5;
 fn plan_movement(
-	query:Query<(&mut PlayerMovement, &mut Velocity, &mut PhysicalRotation), With<Player>>,
+	mut commands:Commands,
+	query:Query<(Entity, &mut PlayerMovement, &mut Velocity, &mut PhysicalRotation), With<Player>>,
 	time:Res<Time<Fixed>>,
 ){
 	let delta = time.delta_secs();
 
-	for (mut movement, mut velocity, mut rotation) in query{
+	for (entity, mut movement, mut velocity, mut rotation) in query{
 		rotation.0 = rotation.0.rotate_towards(movement.target_rotation, delta * PLAYER_TURN_SPEED * PI);
   	let movement_3d = Vec3::new(movement.direction.x, 0.0, movement.direction.y);
 
@@ -285,6 +306,26 @@ fn plan_movement(
 			velocity.direction = Dir3::Y;
 			velocity.speed = 0.;
 		}	
+
+		if movement.kick{
+			movement.kick_timer.tick(time.delta());
+		}
+		else{
+			let kick_time = movement.kick_timer.elapsed_secs();
+			if kick_time > 0.2{
+				//do a kick!
+				info!("Kick! {}",kick_time);
+				//power is how long the button was help
+				commands.trigger(PlayerIntentEvent{ entity, intent: PlayerIntent::Shoot((kick_time / MAX_POWER_HOLD).min(1.0)) });
+				movement.kick_timer.reset();
+			}
+			else if kick_time > 0.{
+				//do a pass!
+				info!("pass! {}",kick_time);
+				commands.trigger(PlayerIntentEvent{ entity, intent: PlayerIntent::Pass });
+				movement.kick_timer.reset();
+			}
+		}
 	}
 }
 
@@ -384,13 +425,43 @@ fn player_think(
 		}
 		else{
 			movement.direction = Vec2::ZERO;
-
 			let diff = match_state.ball_location.with_y(0.) - translation.0.with_y(0.);
-
 			movement.target_rotation = Quat::from_rotation_arc(Vec3::Z, diff.normalize_or_zero());
-			//movement.target_rotation = Quat::look_at_lh(translation.0, match_state.ball_location, Vec3::Y);
 		}
 
 
 	}
+}
+
+fn player_intent_event(
+	event:On<PlayerIntentEvent>,
+	player_query:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, &PlayerMovement), Without<Ball>>,
+	ball:Single<&PhysicalTranslation, With<Ball>>
+){
+	let Ok((player_translation, player_rotation, player_velocity, player_movement)) = player_query.get(event.entity) else {
+		return; 
+	};
+	let ball_translation = ball.into_inner();
+	match event.intent{
+		PlayerIntent::Pass => { info!("Pass")},
+		PlayerIntent::Shoot(power) => info!("Shoot {}", power),
+	}
+}
+
+
+fn player_context_event(
+	event:On<PlayerContextEvent>,
+	player_query:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, &PlayerMovement), Without<Ball>>,
+	ball:Single<&PhysicalTranslation, With<Ball>>
+){
+	let Ok((player_translation, player_rotation, player_velocity, player_movement)) = player_query.get(event.entity) else {
+		return; 
+	};
+	let ball_translation = ball.into_inner();
+	let diff = ball_translation.0 - player_translation.0;
+	if diff.length_squared() < MAX_INTERACTION_DISTANCE_SQUARED{ return; }
+
+	info!("Context");
+	//decide if we're sliding, throwing in, heading, whatever...and do it!
+
 }

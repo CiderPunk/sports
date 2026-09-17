@@ -1,7 +1,7 @@
 use bevy::{math::FloatPow, prelude::*};
 use std::f32::consts::PI;
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, game_schedule::GameSchedule, game_state::GameState, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget, Velocity}, player::{ PLAYER_HEIGHT, Player, PlayerMovement}};
+use crate::{assets::AssetLoadState, game_schedule::GameSchedule, game_state::GameState, helpers::{self, to_nearest_control_point}, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget, Velocity}, player::{ PLAYER_HEIGHT, Player, PlayerMovement}};
 
 const BALL_SCALE: f32 = 0.5;
 pub const BALL_RADIUS:f32 = 0.25 * BALL_SCALE;
@@ -30,7 +30,6 @@ pub const MAX_INTERACTION_DISTANCE_SQUARED:f32 = MAX_INTERACTION_DISTANCE * MAX_
 pub const MAX_DRIBBLE_ANGLE:f32 = PI * 0.20;
 
 pub const PLAYER_MAX_CONTROL_DISTANCE:f32 = 0.75;
-pub const OPTIMAL_CONTROL_DISTANCE:f32 = 0.75;
 pub const SPEED_MATCH_FACTOR:f32 = 14.0;
 pub const DISTANCE_MATCH_FACTPR:f32 = 90.0;
 
@@ -118,20 +117,12 @@ fn dribble(
 	//find who controls the ball...
 	for (translation, rotation, velocity, entity) in players{
 
-		let to_ball = ball_translation.0.xz() - translation.0.xz();
-		if to_ball.length_squared() > MAX_INTERACTION_DISTANCE_SQUARED{ continue; }
+		let Some(to_control_point) = to_nearest_control_point(ball_translation.0, translation.0, rotation.0) else{
+			continue;
+		};
 
-		let forward = rotation.0 * Vec3::Z;
-		let forward_2d = forward.xz();
-		let angle_to_ball = to_ball.angle_to(forward_2d);
-		//info!("ball angle: {} ", angle_to_ball);
-		let target_angle = angle_to_ball.clamp(-MAX_DRIBBLE_ANGLE, MAX_DRIBBLE_ANGLE);
-		//info!("ball angle: {}  target angle: {}", angle_to_ball, target_angle);
 
-		//nearest control point
-		let control_point = translation.0 + (forward.rotate_y(target_angle) * OPTIMAL_CONTROL_DISTANCE).with_y(BALL_GROUND_LEVEL); 
-		gizmos.arrow(control_point, ball_translation.0, bevy::color::palettes::css::RED);
-		let to_control_point = ball_translation.0 - control_point;
+		gizmos.arrow(ball_translation.0, ball_translation.0 - to_control_point, bevy::color::palettes::css::RED);
 
 		let dist_squared = to_control_point.length_squared();
 		if dist_squared < PLAYER_MAX_CONTROL_DISTANCE * PLAYER_MAX_CONTROL_DISTANCE{
@@ -144,7 +135,6 @@ fn dribble(
 		return;
 	}
 	if let Some(candidate) = closest{
-
 
 		ball.possession = Some(candidate.entity);
 		let mut ball_vec = ball_velocity.to_vec3();
