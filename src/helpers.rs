@@ -1,7 +1,5 @@
 use bevy::prelude::*;
-
 use crate::{ball::BALL_GROUND_LEVEL, constants::*};
-
 
 pub fn to_nearest_control_point(ball_translation:Vec3, player_translation:Vec3, player_rotation:Quat)->Option<Vec3>{
 	let to_ball = ball_translation.xz() - player_translation.xz();

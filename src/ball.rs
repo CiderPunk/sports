@@ -1,7 +1,7 @@
 use bevy::{math::FloatPow, prelude::*};
 use std::f32::consts::PI;
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, game_schedule::GameSchedule, game_state::GameState, helpers::{self, to_nearest_control_point}, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget, Velocity}, player::{ PLAYER_HEIGHT, Player, PlayerMovement}};
+use crate::{assets::AssetLoadState, constants::*, game_schedule::GameSchedule, game_state::GameState, helpers::*, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget, Velocity}, player:: Player};
 
 const BALL_SCALE: f32 = 0.5;
 pub const BALL_RADIUS:f32 = 0.25 * BALL_SCALE;
@@ -27,9 +27,7 @@ const GROUND_DECELERATION:f32 = GRAVITY_DOWN * ROLLING_RESISTANCE;
 pub const MAX_DRIBBLE_HEIGHT:f32 = 1.;
 pub const MAX_INTERACTION_DISTANCE:f32 = 2.;
 pub const MAX_INTERACTION_DISTANCE_SQUARED:f32 = MAX_INTERACTION_DISTANCE * MAX_INTERACTION_DISTANCE;
-pub const MAX_DRIBBLE_ANGLE:f32 = PI * 0.20;
 
-pub const PLAYER_MAX_CONTROL_DISTANCE:f32 = 0.75;
 pub const SPEED_MATCH_FACTOR:f32 = 14.0;
 pub const DISTANCE_MATCH_FACTPR:f32 = 90.0;
 

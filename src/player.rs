@@ -3,7 +3,7 @@ use std::{f32::consts::PI, time::Duration };
 use bevy::{gltf::GltfMesh, light::NotShadowCaster, prelude::*, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
 
-use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{Ball, MAX_INTERACTION_DISTANCE_SQUARED}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, match_state::MatchState, physics::{Collider, ColliderShape, CylinderTarget, Velocity}, team::{self, PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
+use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{Ball, MAX_INTERACTION_DISTANCE_SQUARED}, constants::*, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, match_state::MatchState, physics::{Collider, ColliderShape, CylinderTarget, Velocity}, team::{self, PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_TURN_SPEED: f32 = 3.0;
@@ -436,15 +436,30 @@ fn player_think(
 fn player_intent_event(
 	event:On<PlayerIntentEvent>,
 	player_query:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, &PlayerMovement), Without<Ball>>,
-	ball:Single<&PhysicalTranslation, With<Ball>>
+	mut ball:Single<(&PhysicalTranslation, &mut Velocity), With<Ball>>
 ){
 	let Ok((player_translation, player_rotation, player_velocity, player_movement)) = player_query.get(event.entity) else {
 		return; 
 	};
-	let ball_translation = ball.into_inner();
+	let (ball_translation, mut velocity) = ball.into_inner();
+	
+	let Some(to_control_point) = to_nearest_control_point(ball_translation.0, player_translation.0, player_rotation.0) else{
+		return;
+	};
+	//cant kick when ball beyond control distance
+	if to_control_point.length_squared() > PLAYER_MAX_CONTROL_DISTANCE * PLAYER_MAX_CONTROL_DISTANCE{
+		return;
+	}
+
 	match event.intent{
 		PlayerIntent::Pass => { info!("Pass")},
-		PlayerIntent::Shoot(power) => info!("Shoot {}", power),
+		PlayerIntent::Shoot(power) => { 
+			
+			info!("Shoot {}", power);
+			let shot_dir = Vec3::new(player_movement.direction.x, 0.2, player_movement.direction.y).normalize_or_zero();
+			velocity.direction = Dir3::new_unchecked(shot_dir);
+			velocity.speed = power* 60.0;
+		},
 	}
 }
 
@@ -458,8 +473,12 @@ fn player_context_event(
 		return; 
 	};
 	let ball_translation = ball.into_inner();
+
+
 	let diff = ball_translation.0 - player_translation.0;
 	if diff.length_squared() < MAX_INTERACTION_DISTANCE_SQUARED{ return; }
+
+	
 
 	info!("Context");
 	//decide if we're sliding, throwing in, heading, whatever...and do it!
