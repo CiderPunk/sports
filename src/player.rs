@@ -1,9 +1,9 @@
-use bevy::{math::VectorSpace, prelude::*};
+use bevy::{math::{NormedVectorSpace, VectorSpace}, prelude::*};
 use std::{f32::consts::PI, time::Duration };
 use bevy::{gltf::GltfMesh, light::NotShadowCaster, prelude::*, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
 
-use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::Ball, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, match_state::MatchState, physics::{Collider, ColliderShape, CylinderTarget, Velocity}, team::{self, PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
+use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{Ball, MAX_INTERACTION_DISTANCE_SQUARED}, constants::*, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, match_state::MatchState, physics::{Collider, ColliderShape, CylinderTarget, EPSILON_TOLERANCE, Velocity}, team::{self, PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_TURN_SPEED: f32 = 3.0;
@@ -24,7 +24,7 @@ impl Plugin for PlayerPlugin{
 			.add_systems(OnEnter(GameState::Initialize), (init_markers, init_player, spawn_players).chain())
 			.add_systems(Update, (update_active_marker_position, animate_player))
 			.add_systems(FixedUpdate, plan_movement.in_set(GameSchedule::PreMovement))
-			.add_systems(FixedUpdate, (player_think, do_movement).in_set(GameSchedule::Movement))
+			.add_systems(FixedUpdate, (update_recovery, player_think, do_movement).in_set(GameSchedule::Movement))
 			.add_systems(Update, (check_active_player).run_if(on_timer(Duration::from_secs_f32(0.2))))
 			;
 	}
@@ -50,9 +50,29 @@ pub struct ActiveMarker;
 #[derive(Component)]
 pub struct GoalKeeper;
 
+#[derive(EntityEvent)]
+pub struct PlayerIntentEvent{
+	entity:Entity,
+	intent:PlayerIntent,
+}
+
+
+#[derive(EntityEvent)]
+pub struct PlayerContextEvent{
+	entity:Entity,
+}
 
 #[derive(Component)]
-pub struct ThinkTime(Timer);
+#[component(storage = "SparseSet")]
+pub struct KickRecovery{
+	timer:Timer,
+}
+
+
+pub enum PlayerIntent{
+	Pass,
+	Shoot (f32),
+}
 
 
 #[derive(AssetCollection, Resource, Default)]
@@ -85,6 +105,19 @@ fn init_markers(
 	player_assets.target_marker = Some(target_marker_primative.mesh.clone());
 	player_assets.cone_marker = Some(cone_marker_primative.mesh.clone());
 	Ok(())
+}
+
+fn update_recovery(
+	mut commands:Commands,
+	query:Query<(Entity, &mut KickRecovery)>,
+	time:Res<Time<Fixed>>,
+){
+	for (entity, mut recovery) in query{
+		recovery.timer.tick(time.delta());
+		if recovery.timer.is_finished(){
+			commands.entity(entity).remove::<KickRecovery>();
+		}
+	}
 }
 
 
@@ -124,8 +157,6 @@ fn spawn_players(
 
 		for i in 0usize .. 11{
 			
-
-
 			let mut kit = team.kit;	
 			kit.shirt_number = i as u8 +1;
 			if i == 10{
@@ -139,7 +170,7 @@ fn spawn_players(
 
 			let id = commands.spawn((
 				Player{ kit },
-				PlayerMovement{ direction: Vec2::ZERO, target_rotation:Quat::from_axis_angle(Vec3::Y, PI), kick_timer: Stopwatch::new()},
+				PlayerMovement{ direction: Vec2::ZERO, target_rotation:Quat::from_axis_angle(Vec3::Y, PI), kick_timer: Stopwatch::new(), kick:false },
 				WorldAssetRoot(player_assets.player_scene.clone()),
 				Transform::default(),
 				PhysicalTranslation(Vec3::new((i as f32 * 2.) - 0.75, 0., z_pos)),
@@ -160,6 +191,9 @@ fn spawn_players(
 			))
 			.observe(init_player_animations)
 			.observe(init_player_skin)
+			.observe(player_intent_event)
+			.observe(player_context_event)
+			
 			.id();
 
 
@@ -219,6 +253,7 @@ fn init_player_animations(
 pub struct PlayerMovement{
 	pub direction:Vec2,
 	target_rotation:Quat,
+	pub kick:bool,
 	pub kick_timer:Stopwatch,
 }
 
@@ -228,8 +263,6 @@ impl PlayerMovement{
 		Vec3::new(vel_2d.x, 0.0, vel_2d.y)
 	}
 }
-
-
 
 fn update_active_marker_position(
 	active_player_query:Query<&GlobalTransform, With<ActivePlayer>>,
@@ -265,13 +298,16 @@ fn animate_player(
 	}
 }
 
+//maximum button hold time for max power
+const MAX_POWER_HOLD:f32 = 0.5;
 fn plan_movement(
-	query:Query<(&mut PlayerMovement, &mut Velocity, &mut PhysicalRotation), With<Player>>,
+	mut commands:Commands,
+	query:Query<(Entity, &mut PlayerMovement, &mut Velocity, &mut PhysicalRotation), With<Player>>,
 	time:Res<Time<Fixed>>,
 ){
 	let delta = time.delta_secs();
 
-	for (mut movement, mut velocity, mut rotation) in query{
+	for (entity, mut movement, mut velocity, mut rotation) in query{
 		rotation.0 = rotation.0.rotate_towards(movement.target_rotation, delta * PLAYER_TURN_SPEED * PI);
   	let movement_3d = Vec3::new(movement.direction.x, 0.0, movement.direction.y);
 
@@ -284,6 +320,26 @@ fn plan_movement(
 			velocity.direction = Dir3::Y;
 			velocity.speed = 0.;
 		}	
+
+		if movement.kick{
+			movement.kick_timer.tick(time.delta());
+		}
+		else{
+			let kick_time = movement.kick_timer.elapsed_secs();
+			if kick_time > 0.2{
+				//do a kick!
+				info!("Kick! {}",kick_time);
+				//power is how long the button was help
+				commands.trigger(PlayerIntentEvent{ entity, intent: PlayerIntent::Shoot((kick_time / MAX_POWER_HOLD).min(1.0)) });
+				movement.kick_timer.reset();
+			}
+			else if kick_time > 0.{
+				//do a pass!
+				info!("pass! {}",kick_time);
+				commands.trigger(PlayerIntentEvent{ entity, intent: PlayerIntent::Pass });
+				movement.kick_timer.reset();
+			}
+		}
 	}
 }
 
@@ -354,7 +410,6 @@ const POSITION_REDUCED_SPEED_FACTOR:f32 = 0.6;
 fn player_think(
 	match_state:Res<MatchState>,
 	players:Query<(&PhysicalTranslation, &TeamMember, &Position, &mut PlayerMovement), (With<Player>, With<ThinkNext>, Without<ActivePlayer>)>,
-	time:Res<Time<Fixed>>,
 ){
 	for (translation, team, position,  mut movement) in players{
 		//are we top or bottom
@@ -366,9 +421,9 @@ fn player_think(
 		let ball_loc = match_state.ball_location.z;
 		let mut position_depth = match_state.half_length + (ball_loc * side_multiplier); 
 		if attacking{
-			position_depth *= 1.2;
+			position_depth *= 1.5;
 		}
-		position_depth = position_depth.clamp(0.2 * match_state.half_length, 1.9 * match_state.half_length);
+		position_depth = position_depth.clamp(0.2 * match_state.half_length, 1.95 * match_state.half_length);
 
 		let target_position = Vec2::new(position.0.x * match_state.half_width,  ((position_depth * position.0.y)- match_state.half_length)* side_multiplier);
 		let diff = target_position - translation.0.xz();
@@ -384,8 +439,71 @@ fn player_think(
 		}
 		else{
 			movement.direction = Vec2::ZERO;
+			let diff = match_state.ball_location.with_y(0.) - translation.0.with_y(0.);
+			movement.target_rotation = Quat::from_rotation_arc(Vec3::Z, diff.normalize_or_zero());
 		}
 
 
 	}
+}
+
+fn player_intent_event(
+	event:On<PlayerIntentEvent>,
+	mut commands:Commands,
+	player_query:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, &PlayerMovement), Without<Ball>>,
+	mut ball:Single<(&PhysicalTranslation, &mut Velocity), With<Ball>>
+	
+){
+	let Ok((player_translation, player_rotation, player_velocity, player_movement)) = player_query.get(event.entity) else {
+		return; 
+	};
+	let (ball_translation, mut velocity) = ball.into_inner();
+	
+	let Some(to_control_point) = to_nearest_control_point(ball_translation.0, player_translation.0, player_rotation.0) else{
+		return;
+	};
+	//cant kick when ball beyond control distance
+	if to_control_point.length_squared() > PLAYER_MAX_CONTROL_DISTANCE * PLAYER_MAX_CONTROL_DISTANCE{
+		return;
+	}
+
+	commands.entity(event.entity).insert(KickRecovery{ timer:Timer::from_seconds(0.2, TimerMode::Once) });
+
+	match event.intent{
+		PlayerIntent::Pass => { info!("Pass")},
+		PlayerIntent::Shoot(power) => { 
+			
+			info!("Shoot {}", power);
+
+			let shoot_dir = if player_movement.direction.length_squared() < EPSILON_TOLERANCE{
+				player_rotation.0 * Vec3::Z
+			}
+			else{
+				Vec3::new(player_movement.direction.x, 0., player_movement.direction.y).normalize_or_zero()
+			}
+			.with_y(power * 0.3).normalize();
+
+			//let shot_dir = Vec3::new(player_movement.direction.x, 0.2, player_movement.direction.y).normalize_or_zero();
+			velocity.direction = Dir3::new_unchecked(shoot_dir);
+			velocity.speed = power* 60.0;
+		},
+	}
+}
+
+
+fn player_context_event(
+	event:On<PlayerContextEvent>,
+	player_query:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, &PlayerMovement), Without<Ball>>,
+	ball:Single<&PhysicalTranslation, With<Ball>>
+){
+	let Ok((player_translation, player_rotation, player_velocity, player_movement)) = player_query.get(event.entity) else {
+		return; 
+	};
+	let ball_translation = ball.into_inner();
+	let diff = ball_translation.0 - player_translation.0;
+	if diff.length_squared() < MAX_INTERACTION_DISTANCE_SQUARED{ return; }
+
+	info!("Context");
+	//decide if we're sliding, throwing in, heading, whatever...and do it!
+
 }

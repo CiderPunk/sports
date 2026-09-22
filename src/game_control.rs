@@ -11,6 +11,8 @@ impl Plugin for GameControlPlugin{
 			.add_systems(OnEnter(GameState::Initialize), spawn_controls)
 			.add_observer(direction_input_started)			
 			.add_observer(direction_input_stopped)
+			.add_observer(kick_started)			
+			.add_observer(kick_finished)
 			;
 	}
 }
@@ -64,18 +66,33 @@ fn direction_input_started(
 
 
 fn kick_started(
-	event:On<Fire<MovementInput>>,
+	event:On<Fire<Kick>>,
 	context:Query<&TeamInputController>,
 	query:Query<(&mut PlayerMovement, &TeamMember), With<ActivePlayer>>,
 ){
 	if let Ok(team) = context.get(event.context){
 		for (mut movement, active_player_team) in query{
 			if team.0 == active_player_team.0{
-				
+				movement.kick = true;
 			}
 		}
 	}
 }
+
+fn kick_finished(
+	event:On<Complete<Kick>>,
+	context:Query<&TeamInputController>,
+	query:Query<(&mut PlayerMovement, &TeamMember), With<ActivePlayer>>,
+){
+	if let Ok(team) = context.get(event.context){
+		for (mut movement, active_player_team) in query{
+			if team.0 == active_player_team.0{
+				movement.kick = false;
+			}
+		}
+	}
+}
+
 
 
 //test

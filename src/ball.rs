@@ -1,7 +1,7 @@
-use bevy::{math::FloatPow, prelude::*};
-use std::f32::consts::PI;
+use bevy::{camera::visibility::NoFrustumCulling, color::palettes::css::RED, math::FloatPow, prelude::*, time::common_conditions::on_timer};
+use std::{f32::consts::PI, time::Duration};
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, game_schedule::GameSchedule, game_state::GameState, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget, Velocity}, player::{ PLAYER_HEIGHT, Player, PlayerMovement}};
+use crate::{assets::AssetLoadState, constants::*, game_schedule::GameSchedule, game_state::GameState, helpers::*, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget, Velocity}, player::{KickRecovery, Player}};
 
 const BALL_SCALE: f32 = 0.5;
 pub const BALL_RADIUS:f32 = 0.25 * BALL_SCALE;
@@ -27,10 +27,7 @@ const GROUND_DECELERATION:f32 = GRAVITY_DOWN * ROLLING_RESISTANCE;
 pub const MAX_DRIBBLE_HEIGHT:f32 = 1.;
 pub const MAX_INTERACTION_DISTANCE:f32 = 2.;
 pub const MAX_INTERACTION_DISTANCE_SQUARED:f32 = MAX_INTERACTION_DISTANCE * MAX_INTERACTION_DISTANCE;
-pub const MAX_DRIBBLE_ANGLE:f32 = PI * 0.20;
 
-pub const PLAYER_MAX_CONTROL_DISTANCE:f32 = 0.75;
-pub const OPTIMAL_CONTROL_DISTANCE:f32 = 0.75;
 pub const SPEED_MATCH_FACTOR:f32 = 14.0;
 pub const DISTANCE_MATCH_FACTPR:f32 = 90.0;
 
@@ -45,6 +42,10 @@ impl Plugin for BallPlugin{
 			.add_systems(OnEnter(GameState::Playing), spawn_ball)
 			.add_systems(FixedUpdate, (dribble, physics).chain().in_set(GameSchedule::PreMovement))
 			.add_systems(FixedUpdate, (do_movement, do_rotation).chain().in_set(GameSchedule::Movement))
+
+
+			//.add_systems(Update, (debug_ball_position).run_if(on_timer(Duration::from_secs_f32(0.5))))
+			//.add_systems(Update, debug_ball_position)
 		//	.add_systems(FixedUpdate, (decide_influence, update_ball).chain().in_set(GameSchedule::MoveBall))
 			;
 	}
@@ -72,6 +73,16 @@ pub struct Rotation{
 }
 
 
+/*
+fn debug_ball_position(
+	ball:Single<(&PhysicalTranslation, &WorldAssetRoot), With<Ball>>,
+	mut gizmos: Gizmos,
+){
+	let (translation, asset_root) = ball.into_inner();
+	//info!("translation {}, asset_id:{}", translation.0, asset_root.id());
+	gizmos.sphere(translation.0, BALL_RADIUS, RED); //(ball_translation.0, bevy::color::palettes::css::BLUE);
+}
+ */
 fn spawn_ball(
 	mut commands:Commands,
 	ball_assets:Res<BallAssets>,
@@ -90,7 +101,8 @@ fn spawn_ball(
 		Velocity{ direction: Dir3::X, speed:7.4 },
 		PhysicalTranslation(Vec3::new(-30.,10. ,0.)),
 		PhysicalRotation(Quat::IDENTITY),
-		Rotation { axis: Vec3::X, speed: 0. }
+		Rotation { axis: Vec3::X, speed: 0. },
+		NoFrustumCulling,
 	));
 }
 
@@ -107,7 +119,7 @@ struct ControlCandidate{
 
 fn dribble(
 	ball:Single<(&mut Ball, &mut Velocity, &PhysicalTranslation)>,
-	players:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, Entity), (With<Player>, Without<Ball>)>,
+	players:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, Entity), (With<Player>, Without<Ball>, Without<KickRecovery>)>,
 	mut gizmos: Gizmos,
 	time:Res<Time<Fixed>>,
 ){
@@ -118,20 +130,10 @@ fn dribble(
 	//find who controls the ball...
 	for (translation, rotation, velocity, entity) in players{
 
-		let to_ball = ball_translation.0.xz() - translation.0.xz();
-		if to_ball.length_squared() > MAX_INTERACTION_DISTANCE_SQUARED{ continue; }
-
-		let forward = rotation.0 * Vec3::Z;
-		let forward_2d = forward.xz();
-		let angle_to_ball = to_ball.angle_to(forward_2d);
-		//info!("ball angle: {} ", angle_to_ball);
-		let target_angle = angle_to_ball.clamp(-MAX_DRIBBLE_ANGLE, MAX_DRIBBLE_ANGLE);
-		//info!("ball angle: {}  target angle: {}", angle_to_ball, target_angle);
-
-		//nearest control point
-		let control_point = translation.0 + (forward.rotate_y(target_angle) * OPTIMAL_CONTROL_DISTANCE).with_y(BALL_GROUND_LEVEL); 
-		gizmos.arrow(control_point, ball_translation.0, bevy::color::palettes::css::RED);
-		let to_control_point = ball_translation.0 - control_point;
+		let Some(to_control_point) = to_nearest_control_point(ball_translation.0, translation.0, rotation.0) else{
+			continue;
+		};
+		gizmos.arrow(ball_translation.0, ball_translation.0 - to_control_point, bevy::color::palettes::css::RED);
 
 		let dist_squared = to_control_point.length_squared();
 		if dist_squared < PLAYER_MAX_CONTROL_DISTANCE * PLAYER_MAX_CONTROL_DISTANCE{
@@ -144,7 +146,6 @@ fn dribble(
 		return;
 	}
 	if let Some(candidate) = closest{
-
 
 		ball.possession = Some(candidate.entity);
 		let mut ball_vec = ball_velocity.to_vec3();
@@ -212,7 +213,7 @@ fn do_rotation(
 
 	let (mut rotation, rotation_spec) = ball.into_inner();
 	let delta_rotation = Quat::from_axis_angle(rotation_spec.axis, rotation_spec.speed * time.delta_secs());
-	rotation.0 = delta_rotation * rotation.0;
+	rotation.0 = (delta_rotation * rotation.0).normalize();
 }
 
 fn do_movement(
@@ -267,6 +268,8 @@ fn do_movement(
 			delta -= time_since_last;
 			time_offset += time_since_last;
 			let collision_point_shifted = collision.point + collision.normal * EPSILON_TOLERANCE;
+
+			translation.0  = collision_point_shifted;
 	
 			let ball_v = ball_velocity.to_vec3();
 			let approach_v = ball_v - target_velocity;
@@ -283,6 +286,8 @@ fn do_movement(
 			delta = 0.;
 		}
 	}
+
+	
 
 	ball_velocity.direction = ball_movement.direction;
 }
