@@ -473,12 +473,8 @@ fn player_context_event(
 		return; 
 	};
 	let ball_translation = ball.into_inner();
-
-
 	let diff = ball_translation.0 - player_translation.0;
 	if diff.length_squared() < MAX_INTERACTION_DISTANCE_SQUARED{ return; }
-
-	
 
 	info!("Context");
 	//decide if we're sliding, throwing in, heading, whatever...and do it!

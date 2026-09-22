@@ -1,5 +1,5 @@
-use bevy::{math::FloatPow, prelude::*};
-use std::f32::consts::PI;
+use bevy::{camera::visibility::NoFrustumCulling, color::palettes::css::RED, math::FloatPow, prelude::*, time::common_conditions::on_timer};
+use std::{f32::consts::PI, time::Duration};
 use bevy_asset_loader::prelude::*;
 use crate::{assets::AssetLoadState, constants::*, game_schedule::GameSchedule, game_state::GameState, helpers::*, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget, Velocity}, player:: Player};
 
@@ -42,6 +42,10 @@ impl Plugin for BallPlugin{
 			.add_systems(OnEnter(GameState::Playing), spawn_ball)
 			.add_systems(FixedUpdate, (dribble, physics).chain().in_set(GameSchedule::PreMovement))
 			.add_systems(FixedUpdate, (do_movement, do_rotation).chain().in_set(GameSchedule::Movement))
+
+
+			//.add_systems(Update, (debug_ball_position).run_if(on_timer(Duration::from_secs_f32(0.5))))
+			//.add_systems(Update, debug_ball_position)
 		//	.add_systems(FixedUpdate, (decide_influence, update_ball).chain().in_set(GameSchedule::MoveBall))
 			;
 	}
@@ -69,6 +73,20 @@ pub struct Rotation{
 }
 
 
+fn debug_ball_position(
+	ball:Single<(&PhysicalTranslation, &WorldAssetRoot), With<Ball>>,
+	mut gizmos: Gizmos,
+){
+
+	let (translation, asset_root) = ball.into_inner();
+	//info!("translation {}, asset_id:{}", translation.0, asset_root.id());
+
+
+	
+		//candidate.to_control_point
+		gizmos.sphere(translation.0, BALL_RADIUS, RED); //(ball_translation.0, bevy::color::palettes::css::BLUE);
+}
+
 fn spawn_ball(
 	mut commands:Commands,
 	ball_assets:Res<BallAssets>,
@@ -87,7 +105,8 @@ fn spawn_ball(
 		Velocity{ direction: Dir3::X, speed:7.4 },
 		PhysicalTranslation(Vec3::new(-30.,10. ,0.)),
 		PhysicalRotation(Quat::IDENTITY),
-		Rotation { axis: Vec3::X, speed: 0. }
+		Rotation { axis: Vec3::X, speed: 0. },
+		NoFrustumCulling,
 	));
 }
 
@@ -200,7 +219,7 @@ fn do_rotation(
 
 	let (mut rotation, rotation_spec) = ball.into_inner();
 	let delta_rotation = Quat::from_axis_angle(rotation_spec.axis, rotation_spec.speed * time.delta_secs());
-	rotation.0 = delta_rotation * rotation.0;
+	rotation.0 = (delta_rotation * rotation.0).normalize();
 }
 
 fn do_movement(
@@ -255,6 +274,8 @@ fn do_movement(
 			delta -= time_since_last;
 			time_offset += time_since_last;
 			let collision_point_shifted = collision.point + collision.normal * EPSILON_TOLERANCE;
+
+			translation.0  = collision_point_shifted;
 	
 			let ball_v = ball_velocity.to_vec3();
 			let approach_v = ball_v - target_velocity;
@@ -271,6 +292,8 @@ fn do_movement(
 			delta = 0.;
 		}
 	}
+
+	
 
 	ball_velocity.direction = ball_movement.direction;
 }

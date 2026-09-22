@@ -8,6 +8,8 @@ impl Plugin for InterpolationPlugin{
 		app
 			.add_systems(Update, (interpolate_translation, interpolate_rotation))
 			.add_systems(FixedPreUpdate, (store_last_translation, store_last_rotation))
+			//.add_systems(Update, interpolate_translation)
+			//.add_systems(FixedPreUpdate, store_last_translation)
 		;
 	}
 }
@@ -32,14 +34,6 @@ pub struct PreviousRotation(pub Quat);
 pub struct Static;
 
 
-fn store_last_rotation(
-	query:Query<(&mut PreviousRotation, &PhysicalRotation)>,
-){
-	for (mut prev, current) in query{
-		prev.0 = current.0;
-	}
-}
-
 
 fn store_last_translation(
 	query:Query<(&mut PreviousTranslation, &PhysicalTranslation)>,
@@ -63,6 +57,17 @@ fn interpolate_translation(
 	}
 }
 
+
+fn store_last_rotation(
+	query:Query<(&mut PreviousRotation, &PhysicalRotation)>,
+){
+	for (mut prev, current) in query{
+		prev.0 = current.0;
+	}
+}
+
+
+
 fn interpolate_rotation(
   fixed_time: Res<Time<Fixed>>,
 	query:Query<(
@@ -73,7 +78,7 @@ fn interpolate_rotation(
 ){
 	let fraction = fixed_time.overstep_fraction();
 	for (mut transform, phys_rotation, prev_rotation) in query{	
-		transform.rotation =  prev_rotation.0.lerp(phys_rotation.0, fraction)
+		transform.rotation =  prev_rotation.0.lerp(phys_rotation.0, fraction).normalize();
 	}
 }
 
