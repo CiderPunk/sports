@@ -1,9 +1,9 @@
-use bevy::{math::VectorSpace, prelude::*};
+use bevy::{math::{NormedVectorSpace, VectorSpace}, prelude::*};
 use std::{f32::consts::PI, time::Duration };
 use bevy::{gltf::GltfMesh, light::NotShadowCaster, prelude::*, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
 
-use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{Ball, MAX_INTERACTION_DISTANCE_SQUARED}, constants::*, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, match_state::MatchState, physics::{Collider, ColliderShape, CylinderTarget, Velocity}, team::{self, PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
+use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{Ball, MAX_INTERACTION_DISTANCE_SQUARED}, constants::*, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, match_state::MatchState, physics::{Collider, ColliderShape, CylinderTarget, EPSILON_TOLERANCE, Velocity}, team::{self, PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_TURN_SPEED: f32 = 3.0;
@@ -24,7 +24,7 @@ impl Plugin for PlayerPlugin{
 			.add_systems(OnEnter(GameState::Initialize), (init_markers, init_player, spawn_players).chain())
 			.add_systems(Update, (update_active_marker_position, animate_player))
 			.add_systems(FixedUpdate, plan_movement.in_set(GameSchedule::PreMovement))
-			.add_systems(FixedUpdate, (player_think, do_movement).in_set(GameSchedule::Movement))
+			.add_systems(FixedUpdate, (update_recovery, player_think, do_movement).in_set(GameSchedule::Movement))
 			.add_systems(Update, (check_active_player).run_if(on_timer(Duration::from_secs_f32(0.2))))
 			;
 	}
@@ -50,11 +50,6 @@ pub struct ActiveMarker;
 #[derive(Component)]
 pub struct GoalKeeper;
 
-
-#[derive(Component)]
-pub struct ThinkTime(Timer);
-
-
 #[derive(EntityEvent)]
 pub struct PlayerIntentEvent{
 	entity:Entity,
@@ -65,6 +60,12 @@ pub struct PlayerIntentEvent{
 #[derive(EntityEvent)]
 pub struct PlayerContextEvent{
 	entity:Entity,
+}
+
+#[derive(Component)]
+#[component(storage = "SparseSet")]
+pub struct KickRecovery{
+	timer:Timer,
 }
 
 
@@ -104,6 +105,19 @@ fn init_markers(
 	player_assets.target_marker = Some(target_marker_primative.mesh.clone());
 	player_assets.cone_marker = Some(cone_marker_primative.mesh.clone());
 	Ok(())
+}
+
+fn update_recovery(
+	mut commands:Commands,
+	query:Query<(Entity, &mut KickRecovery)>,
+	time:Res<Time<Fixed>>,
+){
+	for (entity, mut recovery) in query{
+		recovery.timer.tick(time.delta());
+		if recovery.timer.is_finished(){
+			commands.entity(entity).remove::<KickRecovery>();
+		}
+	}
 }
 
 
@@ -435,8 +449,10 @@ fn player_think(
 
 fn player_intent_event(
 	event:On<PlayerIntentEvent>,
+	mut commands:Commands,
 	player_query:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, &PlayerMovement), Without<Ball>>,
 	mut ball:Single<(&PhysicalTranslation, &mut Velocity), With<Ball>>
+	
 ){
 	let Ok((player_translation, player_rotation, player_velocity, player_movement)) = player_query.get(event.entity) else {
 		return; 
@@ -451,13 +467,24 @@ fn player_intent_event(
 		return;
 	}
 
+	commands.entity(event.entity).insert(KickRecovery{ timer:Timer::from_seconds(0.2, TimerMode::Once) });
+
 	match event.intent{
 		PlayerIntent::Pass => { info!("Pass")},
 		PlayerIntent::Shoot(power) => { 
 			
 			info!("Shoot {}", power);
-			let shot_dir = Vec3::new(player_movement.direction.x, 0.2, player_movement.direction.y).normalize_or_zero();
-			velocity.direction = Dir3::new_unchecked(shot_dir);
+
+			let shoot_dir = if player_movement.direction.length_squared() < EPSILON_TOLERANCE{
+				player_rotation.0 * Vec3::Z
+			}
+			else{
+				Vec3::new(player_movement.direction.x, 0., player_movement.direction.y).normalize_or_zero()
+			}
+			.with_y(power * 0.3).normalize();
+
+			//let shot_dir = Vec3::new(player_movement.direction.x, 0.2, player_movement.direction.y).normalize_or_zero();
+			velocity.direction = Dir3::new_unchecked(shoot_dir);
 			velocity.speed = power* 60.0;
 		},
 	}

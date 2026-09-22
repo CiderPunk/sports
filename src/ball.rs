@@ -1,7 +1,7 @@
 use bevy::{camera::visibility::NoFrustumCulling, color::palettes::css::RED, math::FloatPow, prelude::*, time::common_conditions::on_timer};
 use std::{f32::consts::PI, time::Duration};
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, constants::*, game_schedule::GameSchedule, game_state::GameState, helpers::*, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget, Velocity}, player:: Player};
+use crate::{assets::AssetLoadState, constants::*, game_schedule::GameSchedule, game_state::GameState, helpers::*, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget, Velocity}, player::{KickRecovery, Player}};
 
 const BALL_SCALE: f32 = 0.5;
 pub const BALL_RADIUS:f32 = 0.25 * BALL_SCALE;
@@ -73,20 +73,16 @@ pub struct Rotation{
 }
 
 
+/*
 fn debug_ball_position(
 	ball:Single<(&PhysicalTranslation, &WorldAssetRoot), With<Ball>>,
 	mut gizmos: Gizmos,
 ){
-
 	let (translation, asset_root) = ball.into_inner();
 	//info!("translation {}, asset_id:{}", translation.0, asset_root.id());
-
-
-	
-		//candidate.to_control_point
-		gizmos.sphere(translation.0, BALL_RADIUS, RED); //(ball_translation.0, bevy::color::palettes::css::BLUE);
+	gizmos.sphere(translation.0, BALL_RADIUS, RED); //(ball_translation.0, bevy::color::palettes::css::BLUE);
 }
-
+ */
 fn spawn_ball(
 	mut commands:Commands,
 	ball_assets:Res<BallAssets>,
@@ -123,7 +119,7 @@ struct ControlCandidate{
 
 fn dribble(
 	ball:Single<(&mut Ball, &mut Velocity, &PhysicalTranslation)>,
-	players:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, Entity), (With<Player>, Without<Ball>)>,
+	players:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, Entity), (With<Player>, Without<Ball>, Without<KickRecovery>)>,
 	mut gizmos: Gizmos,
 	time:Res<Time<Fixed>>,
 ){
@@ -137,8 +133,6 @@ fn dribble(
 		let Some(to_control_point) = to_nearest_control_point(ball_translation.0, translation.0, rotation.0) else{
 			continue;
 		};
-
-
 		gizmos.arrow(ball_translation.0, ball_translation.0 - to_control_point, bevy::color::palettes::css::RED);
 
 		let dist_squared = to_control_point.length_squared();

@@ -78,7 +78,7 @@ fn interpolate_rotation(
 ){
 	let fraction = fixed_time.overstep_fraction();
 	for (mut transform, phys_rotation, prev_rotation) in query{	
-		transform.rotation =  prev_rotation.0.lerp(phys_rotation.0, fraction).normalize();
+		transform.rotation =  prev_rotation.0.lerp(phys_rotation.0, fraction);
 	}
 }
 
