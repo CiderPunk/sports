@@ -35,7 +35,7 @@ fn update_match_state(
 	time:Res<Time>,
 	ball:Single<(&Ball, &Velocity, &PhysicalTranslation)>,
 	player_team_query:Query<&TeamMember>,
-
+	players:Query<(Entity, &PhysicalTranslation, &Velocity, &TeamMember)>
 ){
 	match_state.match_time.tick(time.delta());
 	let (ball, ball_velocity,  ball_translation) = ball.into_inner();
@@ -44,6 +44,20 @@ fn update_match_state(
 	match_state.posession = ball.possession
 		.and_then(|player|{ player_team_query.get(player).ok()})
 		.map(|team| team.0);
+
+	match_state.north_team.clear();
+	match_state.south_team.clear();
+
+	for (entity, translation, velocity, team) in players{
+		let snapshot = PlayerSnapshot{ entity, translation:translation.0, velocity: velocity.to_vec3() };
+		if match_state.top_team == Some(team.0){
+			match_state.north_team.push(snapshot);
+		}
+		else{
+			match_state.south_team.push(snapshot);
+		}
+	}
+
 
 	/*
 	match_state.posession = match ball.possession{
@@ -70,4 +84,13 @@ pub struct MatchState{
 	pub top_team:Option<Entity>, //which team is north...
 	pub half_length:f32,
 	pub half_width:f32,
+	pub north_team:Vec<PlayerSnapshot>,
+	pub south_team:Vec<PlayerSnapshot>,
+}
+
+#[derive(Debug)]
+pub struct PlayerSnapshot{
+	entity:Entity,
+	translation:Vec3,
+	velocity:Vec3,
 }

@@ -451,8 +451,8 @@ fn player_intent_event(
 	event:On<PlayerIntentEvent>,
 	mut commands:Commands,
 	player_query:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, &PlayerMovement), Without<Ball>>,
-	mut ball:Single<(&PhysicalTranslation, &mut Velocity), With<Ball>>
-	
+	ball:Single<(&PhysicalTranslation, &mut Velocity), With<Ball>>,
+	match_state:Res<MatchState>,
 ){
 	let Ok((player_translation, player_rotation, player_velocity, player_movement)) = player_query.get(event.entity) else {
 		return; 
@@ -481,7 +481,7 @@ fn player_intent_event(
 			else{
 				Vec3::new(player_movement.direction.x, 0., player_movement.direction.y).normalize_or_zero()
 			}
-			.with_y(power * 0.3).normalize();
+			.with_y(power * 0.2).normalize();
 
 			//let shot_dir = Vec3::new(player_movement.direction.x, 0.2, player_movement.direction.y).normalize_or_zero();
 			velocity.direction = Dir3::new_unchecked(shoot_dir);

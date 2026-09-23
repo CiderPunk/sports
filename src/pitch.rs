@@ -364,8 +364,6 @@ fn spawn_pitch_colliders(
 				PhysicalTranslation(Vec3::new(-half_goal, pitch_config.goal_height, half_pitch_length)),
 			),
 
-
-
 			//top goal
 			(
 				Name::new("far left post"),
