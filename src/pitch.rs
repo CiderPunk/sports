@@ -283,10 +283,7 @@ fn spawn_pitch_colliders(
 	let half_pitch_length = pitch_config.length * 0.5;
 	let half_total_width = (pitch_config.width * 0.5) + pitch_config.border;
 	let half_total_length = half_pitch_length + pitch_config.border;
-
-	
-
-	let goal_offset = pitch_config.goal_width * 0.5;
+	let half_goal = pitch_config.goal_width * 0.5;
 
 
 	commands.spawn((
@@ -344,7 +341,7 @@ fn spawn_pitch_colliders(
 					shape: crate::physics::ColliderShape::Cylinder(CylinderTarget { direction: Dir3::Y, radius: pitch_config.pole_radius, length: pitch_config.goal_height }),
 					restitution: POLE_RESTITUTION,
 				},
-				PhysicalTranslation(Vec3::new(goal_offset, 0., half_pitch_length)),
+				PhysicalTranslation(Vec3::new(half_goal, 0., half_pitch_length)),
 				Static,
 
 			),
@@ -355,8 +352,20 @@ fn spawn_pitch_colliders(
 					restitution: POLE_RESTITUTION,
 				},
 				Static,
-				PhysicalTranslation(Vec3::new(-goal_offset, 0., half_pitch_length)),
+				PhysicalTranslation(Vec3::new(-half_goal, 0., half_pitch_length)),
 			),
+			(
+				Name::new("near top bar"),
+				Collider{ 
+					shape: crate::physics::ColliderShape::Cylinder(CylinderTarget { direction: Dir3::X, radius: pitch_config.pole_radius, length: pitch_config.goal_width }),
+					restitution: POLE_RESTITUTION,
+				},
+				Static,
+				PhysicalTranslation(Vec3::new(-half_goal, pitch_config.goal_height, half_pitch_length)),
+			),
+
+
+
 			//top goal
 			(
 				Name::new("far left post"),
@@ -365,7 +374,7 @@ fn spawn_pitch_colliders(
 					restitution: POLE_RESTITUTION,
 				},
 				Static,
-				PhysicalTranslation(Vec3::new(goal_offset, 0., -half_pitch_length))
+				PhysicalTranslation(Vec3::new(half_goal, 0., -half_pitch_length))
 			),
 			(
 				Name::new("far right post"),
@@ -373,8 +382,18 @@ fn spawn_pitch_colliders(
 					shape: crate::physics::ColliderShape::Cylinder(CylinderTarget { direction: Dir3::Y, radius: pitch_config.pole_radius, length: pitch_config.goal_height }),
 					restitution: POLE_RESTITUTION,
 				},
-				PhysicalTranslation(Vec3::new(-goal_offset, 0., -half_pitch_length)),
+				PhysicalTranslation(Vec3::new(-half_goal, 0., -half_pitch_length)),
 			),
+			(
+				Name::new("far top bar"),
+				Collider{ 
+					shape: crate::physics::ColliderShape::Cylinder(CylinderTarget { direction: Dir3::X, radius: pitch_config.pole_radius, length: pitch_config.goal_width }),
+					restitution: POLE_RESTITUTION,
+				},
+				Static,
+				PhysicalTranslation(Vec3::new(-half_goal, pitch_config.goal_height, -half_pitch_length)),
+			),
+
 
 		],
 	));
