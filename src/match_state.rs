@@ -88,9 +88,9 @@ pub struct MatchState{
 	pub south_team:Vec<PlayerSnapshot>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct PlayerSnapshot{
-	entity:Entity,
-	translation:Vec3,
-	velocity:Vec3,
+	pub entity:Entity,
+	pub translation:Vec3,
+	pub velocity:Vec3,
 }
