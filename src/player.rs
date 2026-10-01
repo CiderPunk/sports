@@ -21,10 +21,11 @@ impl Plugin for PlayerPlugin{
 				LoadingStateConfig::new(AssetLoadState::Startup)
 				.load_collection::<PlayerAssets>(),
 			)
+			.add_message::<ActivePlayerSwitch>()
 			.add_systems(OnEnter(GameState::Initialize), (init_markers, init_player, spawn_players).chain())
 			.add_systems(Update, (update_active_marker_position, animate_player))
-			.add_systems(FixedUpdate, plan_movement.in_set(GameSchedule::PreMovement))
-			.add_systems(FixedUpdate, (update_recovery, player_think, do_movement).in_set(GameSchedule::Movement))
+			.add_systems(FixedUpdate,  plan_movement.in_set(GameSchedule::PreMovement))
+			.add_systems(FixedUpdate, (switch_active_player, update_recovery, player_think, do_movement).in_set(GameSchedule::Movement))
 			.add_systems(Update, (check_active_player).run_if(on_timer(Duration::from_secs_f32(0.2))))
 			;
 	}
@@ -359,6 +360,8 @@ const ACTIVE_PLAYER_TRANSITION_DISTANCE:f32 = 20.0;
 
 fn check_active_player(
 	mut commands:Commands,
+	
+	mut message_writer:MessageWriter<ActivePlayerSwitch>,
 	ball:Single<(&PhysicalTranslation, &Velocity), With<Ball>>,
 	teams:Query<&TeamMembers, With<PlayerControlled>>,
 	player_query:Query<(&PhysicalTranslation, Option<&ActivePlayer>)>,
@@ -390,17 +393,40 @@ fn check_active_player(
 			}
 		}
 		if transition && closest_entity != active_player{
-			//remove old active
-			if let Some(old_active) = active_player{
-				commands.entity(old_active).remove::<ActivePlayer>();
-			};
+
 			if let Some(new_active) = closest_entity{
-				commands.entity(new_active).insert(ActivePlayer);
+
+				message_writer.write(ActivePlayerSwitch(new_active));
 			}
 		}
 	}
 }
 
+
+#[derive(Message)]
+pub struct ActivePlayerSwitch(Entity);
+
+fn switch_active_player(
+	mut message_reader:MessageReader<ActivePlayerSwitch>,
+	player_query:Query<&TeamMember>,
+	previous_player_query:Query<(&TeamMember, Entity),With<ActivePlayer>>,
+	mut commands:Commands,
+){
+	for message in message_reader.read(){
+		let Ok(team) = player_query.get(message.0) else {
+			continue;
+		};  
+		for (player_team, entity) in previous_player_query{
+			if player_team.0 == team.0{
+				//switch to same user null-op
+				if entity == message.0{ return; }
+				commands.entity(entity).remove::<ActivePlayer>();
+				break;
+			}
+		}
+		commands.entity(message.0).insert(ActivePlayer);
+	}
+}
 
 const POSITION_DISTANCE_VARIANCE:f32 = 2.5;
 const POSITION_REDUCED_SPEED_DISTANCE:f32 = 5.0;
