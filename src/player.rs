@@ -1,9 +1,9 @@
-use bevy::{math::{NormedVectorSpace, VectorSpace}, prelude::*};
+use bevy::{input::mouse::MouseButton::Forward, math::{NormedVectorSpace, VectorSpace}, prelude::*};
 use std::{f32::consts::PI, time::Duration };
 use bevy::{gltf::GltfMesh, light::NotShadowCaster, prelude::*, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
 
-use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{Ball, MAX_INTERACTION_DISTANCE_SQUARED}, constants::*, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, match_state::MatchState, physics::{Collider, ColliderShape, CylinderTarget, EPSILON_TOLERANCE, Velocity}, team::{self, PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
+use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{Ball, MAX_INTERACTION_DISTANCE_SQUARED}, constants::*, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, match_state::{MatchState, PlayerSnapshot}, physics::{Collider, ColliderShape, CylinderTarget, EPSILON_TOLERANCE, Velocity}, team::{self, PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_TURN_SPEED: f32 = 3.0;
@@ -21,10 +21,11 @@ impl Plugin for PlayerPlugin{
 				LoadingStateConfig::new(AssetLoadState::Startup)
 				.load_collection::<PlayerAssets>(),
 			)
+			.add_message::<ActivePlayerSwitch>()
 			.add_systems(OnEnter(GameState::Initialize), (init_markers, init_player, spawn_players).chain())
 			.add_systems(Update, (update_active_marker_position, animate_player))
-			.add_systems(FixedUpdate, plan_movement.in_set(GameSchedule::PreMovement))
-			.add_systems(FixedUpdate, (update_recovery, player_think, do_movement).in_set(GameSchedule::Movement))
+			.add_systems(FixedUpdate,  plan_movement.in_set(GameSchedule::PreMovement))
+			.add_systems(FixedUpdate, (switch_active_player, update_recovery, player_think, do_movement).in_set(GameSchedule::Movement))
 			.add_systems(Update, (check_active_player).run_if(on_timer(Duration::from_secs_f32(0.2))))
 			;
 	}
@@ -359,6 +360,8 @@ const ACTIVE_PLAYER_TRANSITION_DISTANCE:f32 = 20.0;
 
 fn check_active_player(
 	mut commands:Commands,
+	
+	mut message_writer:MessageWriter<ActivePlayerSwitch>,
 	ball:Single<(&PhysicalTranslation, &Velocity), With<Ball>>,
 	teams:Query<&TeamMembers, With<PlayerControlled>>,
 	player_query:Query<(&PhysicalTranslation, Option<&ActivePlayer>)>,
@@ -390,17 +393,40 @@ fn check_active_player(
 			}
 		}
 		if transition && closest_entity != active_player{
-			//remove old active
-			if let Some(old_active) = active_player{
-				commands.entity(old_active).remove::<ActivePlayer>();
-			};
+
 			if let Some(new_active) = closest_entity{
-				commands.entity(new_active).insert(ActivePlayer);
+
+				message_writer.write(ActivePlayerSwitch(new_active));
 			}
 		}
 	}
 }
 
+
+#[derive(Message)]
+pub struct ActivePlayerSwitch(Entity);
+
+fn switch_active_player(
+	mut message_reader:MessageReader<ActivePlayerSwitch>,
+	player_query:Query<&TeamMember>,
+	previous_player_query:Query<(&TeamMember, Entity),With<ActivePlayer>>,
+	mut commands:Commands,
+){
+	for message in message_reader.read(){
+		let Ok(team) = player_query.get(message.0) else {
+			continue;
+		};  
+		for (player_team, entity) in previous_player_query{
+			if player_team.0 == team.0{
+				//switch to same user null-op
+				if entity == message.0{ return; }
+				commands.entity(entity).remove::<ActivePlayer>();
+				break;
+			}
+		}
+		commands.entity(message.0).insert(ActivePlayer);
+	}
+}
 
 const POSITION_DISTANCE_VARIANCE:f32 = 2.5;
 const POSITION_REDUCED_SPEED_DISTANCE:f32 = 5.0;
@@ -447,14 +473,21 @@ fn player_think(
 	}
 }
 
+
+const MAX_PASS_DISTANCE:f32 = 30.;
+const MAX_PASS_DEFLECTION:f32 = PI * 0.125;
+const PASS_ANGLE_FACTOR:f32 = 2.0;
+const PASS_SPEED:f32 = 20.;
+
+
 fn player_intent_event(
 	event:On<PlayerIntentEvent>,
 	mut commands:Commands,
-	player_query:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, &PlayerMovement), Without<Ball>>,
-	mut ball:Single<(&PhysicalTranslation, &mut Velocity), With<Ball>>
-	
+	player_query:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, &PlayerMovement, &TeamMember), Without<Ball>>,
+	ball:Single<(&PhysicalTranslation, &mut Velocity), With<Ball>>,
+	match_state:Res<MatchState>,
 ){
-	let Ok((player_translation, player_rotation, player_velocity, player_movement)) = player_query.get(event.entity) else {
+	let Ok((player_translation, player_rotation, player_velocity, player_movement, team)) = player_query.get(event.entity) else {
 		return; 
 	};
 	let (ball_translation, mut velocity) = ball.into_inner();
@@ -467,24 +500,64 @@ fn player_intent_event(
 		return;
 	}
 
+
+	let shoot_dir = if player_movement.direction.length_squared() < EPSILON_TOLERANCE{
+		player_rotation.0 * Vec3::Z
+	}
+	else{
+		Vec3::new(player_movement.direction.x, 0., player_movement.direction.y).normalize_or_zero()
+	};
+
 	commands.entity(event.entity).insert(KickRecovery{ timer:Timer::from_seconds(0.2, TimerMode::Once) });
 
 	match event.intent{
-		PlayerIntent::Pass => { info!("Pass")},
+		PlayerIntent::Pass => { 
+			let is_top_team = Some(team.0) == match_state.top_team;
+			let pass_candidates = match is_top_team{
+				true => &match_state.north_team,
+				false => &match_state.south_team,
+			};
+			let forward = player_rotation.0 * Vec3::Z;
+			let mut best_distance_angle:Option<f32> = None;
+			let mut best_pass_candidate:Option<PlayerSnapshot> = None;
+
+			for candidate in pass_candidates{
+				//dont pass to yourself that'd be dumb!
+				if candidate.entity == event.entity{ continue; }
+				let diff = candidate.translation - player_translation.0;
+				if diff.length_squared() > MAX_PASS_DISTANCE * MAX_PASS_DISTANCE{ continue; }
+				let angle = diff.angle_between(forward);
+				if angle < MAX_PASS_DEFLECTION {
+					let distance_angle = (0.1 + angle) * diff.length();
+					if best_distance_angle < Some(distance_angle){
+						best_distance_angle = Some(distance_angle);
+						best_pass_candidate = Some(*candidate);
+					}
+				}
+			}
+			if let Some(candidate) =best_pass_candidate {
+				let diff = candidate.translation - player_translation.0;
+				let dist = diff.length();
+				let eta = dist / PASS_SPEED;
+				let predicted_location = candidate.translation + candidate.velocity * eta;
+				let shoot_vector = (predicted_location - player_translation.0).normalize();
+				velocity.direction = Dir3::new_unchecked(shoot_vector);
+				velocity.speed = PASS_SPEED;
+				info!("Pass to {} travet time {}", candidate.entity, eta);
+			}
+			else{
+				velocity.direction = Dir3::new_unchecked(shoot_dir);
+				velocity.speed = PASS_SPEED;
+				info!("Pass no target");
+			}
+			
+		},
 		PlayerIntent::Shoot(power) => { 
 			
 			info!("Shoot {}", power);
-
-			let shoot_dir = if player_movement.direction.length_squared() < EPSILON_TOLERANCE{
-				player_rotation.0 * Vec3::Z
-			}
-			else{
-				Vec3::new(player_movement.direction.x, 0., player_movement.direction.y).normalize_or_zero()
-			}
-			.with_y(power * 0.3).normalize();
-
+			let shoot = shoot_dir.with_y(power * 0.2).normalize();
 			//let shot_dir = Vec3::new(player_movement.direction.x, 0.2, player_movement.direction.y).normalize_or_zero();
-			velocity.direction = Dir3::new_unchecked(shoot_dir);
+			velocity.direction = Dir3::new_unchecked(shoot);
 			velocity.speed = power* 60.0;
 		},
 	}

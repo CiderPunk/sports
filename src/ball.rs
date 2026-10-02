@@ -5,7 +5,7 @@ use crate::{assets::AssetLoadState, constants::*, game_schedule::GameSchedule, g
 
 const BALL_SCALE: f32 = 0.5;
 pub const BALL_RADIUS:f32 = 0.25 * BALL_SCALE;
-pub const BALL_GROUND_LEVEL:f32 = BALL_RADIUS + EPSILON_TOLERANCE;
+pub const BALL_GROUND_LEVEL:f32 = BALL_RADIUS + EPSILON_TOLERANCE ;
 const GRAVITY_DOWN:f32 = 9.8;
 const GRAVITY:Vec3 = Vec3::new(0., -GRAVITY_DOWN, 0.);
 const BALL_RESTITUTION:f32 = 0.8;
@@ -29,7 +29,7 @@ pub const MAX_INTERACTION_DISTANCE:f32 = 2.;
 pub const MAX_INTERACTION_DISTANCE_SQUARED:f32 = MAX_INTERACTION_DISTANCE * MAX_INTERACTION_DISTANCE;
 
 pub const SPEED_MATCH_FACTOR:f32 = 14.0;
-pub const DISTANCE_MATCH_FACTPR:f32 = 90.0;
+pub const DISTANCE_MATCH_FACTPR:f32 = 120.0;
 
 pub struct BallPlugin;
 impl Plugin for BallPlugin{
@@ -172,7 +172,7 @@ fn physics(
 	let mut velocity = ball_velocity.to_vec3();
 	let mut is_on_ground = false;
 	//ball in the air, apply gravity!
-	if translation.0.y > BALL_GROUND_LEVEL{
+	if translation.0.y > BALL_GROUND_LEVEL + EPSILON_TOLERANCE{
 		//info!("Airborn {} > {}" , translation.0.y, BALL_RADIUS + EPSILON_TOLERANCE);
 		let force = AIR_DAMPING * ball_velocity.speed.squared();
 		let deceleration = force / BALL_MASS;
@@ -217,11 +217,11 @@ fn do_rotation(
 }
 
 fn do_movement(
-	ball:Single<(&mut PhysicalTranslation, &mut Velocity), With<Ball>>,
+	ball:Single<(&mut PhysicalTranslation, &mut Velocity, &Ball)>,
 	colliders:Query<(Entity, &Collider, &PhysicalTranslation, Option<&Velocity>, &Name), Without<Ball>>,
 	time:Res<Time<Fixed>>,
 ){
-	let (mut translation, mut ball_velocity) = ball.into_inner();
+	let (mut translation, mut ball_velocity, ball) = ball.into_inner();
 	let ball_translation = translation.0;
 	let mut ball_movement =  ball_velocity.to_frame_motion(ball_translation, 0., time.delta_secs());
 	let mut time_offset = 0.;
@@ -238,6 +238,9 @@ fn do_movement(
 		let mut target_velocity = Vec3::ZERO;
 		let mut restitution = 0.;
 		for (entity, collider, translation, velocity, name) in colliders{
+
+			if ball.possession == Some(entity){ continue; }
+
 			let movement = match velocity{
 				Some(velocity) => velocity.to_frame_motion(translation.0, time_offset, delta),
 				None => FrameMotion{ origin: translation.0, direction: Dir3::Y, distance: 0. }
@@ -246,7 +249,7 @@ fn do_movement(
 			if collider.broad_phase(&movement, &sphere_sweep){
 				if let Some(hit) = collider.narrow_phase( &movement, entity, &sphere_sweep){
 
-				info!("collision {}", name);
+				info!("collided with {}", name);
 					if nearest.is_none() || hit.time < nearest.unwrap().time{
 						nearest = Some(hit);
 						restitution = collider.restitution;
@@ -262,7 +265,7 @@ fn do_movement(
 			collision_count += 1;
 			//collision!
 			if collision_count > 1{
-			info!("Collision! {}", collision_count);
+			info!("Collision count {}", collision_count);
 			}
 			let time_since_last = delta * collision.time;
 			delta -= time_since_last;
@@ -286,9 +289,6 @@ fn do_movement(
 			delta = 0.;
 		}
 	}
-
-	
-
 	ball_velocity.direction = ball_movement.direction;
 }
 
