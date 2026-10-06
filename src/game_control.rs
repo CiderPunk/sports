@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::*;
 
-use crate::{game_state::GameState, player::{ActivePlayer, PlayerMovement}, team::{PlayerControlled, Team, TeamMember}};
+use crate::{game_state::GameState, player::{ActivePlayer, PlayerMovement}, team::{PlayerControlled, TeamMember}};
 pub struct GameControlPlugin;
 
 impl Plugin for GameControlPlugin{

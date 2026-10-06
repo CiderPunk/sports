@@ -5,7 +5,7 @@ use std::{marker::PhantomData, time::Duration};
 pub struct AnimationManagerPlugin;
 
 impl Plugin for AnimationManagerPlugin {
-	fn build(&self, app: &mut App) {
+	fn build(&self, _app: &mut App) {
 		//app.add_systems(Update, restart_visible_animations)
 
 
@@ -99,7 +99,7 @@ impl<'w, 's, T:Component +'static> AnimationManager<'w, 's, T> {
 				transitions
 					.play(
 						&mut anim_player,
-						anim.clone(),
+						*anim,
 						Duration::ZERO,
 					)
 					.repeat();
@@ -117,11 +117,11 @@ impl<'w, 's, T:Component +'static> AnimationManager<'w, 's, T> {
 		}
 	}
 
-	pub fn set_animation(&mut self, root_entity:Entity, index:usize, transition_time:f32, speed:f32, repeat:bool  ){
+	pub fn set_animation(&mut self, root_entity:Entity, index:usize, transition_time:f32, speed:f32, _repeat:bool  ){
 		let animations = self.anim_resource.as_ref().unwrap_or_else(||{ panic!("missing animation resources") });
 		let anim = animations.animations.get(index).unwrap_or_else(||{ panic!("Out of bounds animation index") });
-		if let Ok(animator)  = self.animator_query.get(root_entity) {
-			if let Ok((mut player, mut transition)) = self.anim_player_queries.p1().get_mut(animator.entity){
+		if let Ok(animator)  = self.animator_query.get(root_entity)
+			&& let Ok((mut player, mut transition)) = self.anim_player_queries.p1().get_mut(animator.entity){
 				if transition.get_main_animation() != Some(*anim){
 					transition.play(&mut player, *anim, Duration::from_secs_f32(transition_time)).set_speed(speed).repeat();
 				}
@@ -129,7 +129,6 @@ impl<'w, 's, T:Component +'static> AnimationManager<'w, 's, T> {
 					active_animation.set_speed(speed);
 				}
 			};
-		};
 	}
 
 }
