@@ -3,7 +3,7 @@ use std::f32::consts::PI;
 use bevy::{asset::RenderAssetUsages, color::palettes::css::{RED, WHITE, YELLOW}, gltf::GltfMesh, light::NotShadowCaster, mesh::Indices, prelude::*, };
 use bevy_asset_loader::prelude::*;
 
-use crate::{assets::AssetLoadState, game_gizmos::{GameGizmoStore, GizmoColour}, game_state::GameState, get_gltf_primative, interpolation::{PhysicalTranslation, Static}, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}, physics::{Collider, CylinderTarget, PlaneTarget}};
+use crate::{assets::AssetLoadState, game_state::GameState, get_gltf_primative, interpolation::{PhysicalTranslation, Static}, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}, physics::{Collider, CylinderTarget, PlaneTarget}};
 
 const LINE_FLOAT_HEIGHT: f32 = 0.05;
 const PITCH_RESTITUTION:f32 = 0.65;

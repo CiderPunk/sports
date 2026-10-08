@@ -1,5 +1,5 @@
-use bevy::{camera::visibility::NoFrustumCulling, color::palettes::css::RED, math::FloatPow, prelude::*, time::common_conditions::on_timer};
-use std::{f32::consts::PI, time::Duration};
+use bevy::{camera::visibility::NoFrustumCulling, math::FloatPow, prelude::*};
+use std::f32::consts::PI;
 use bevy_asset_loader::prelude::*;
 use crate::{assets::AssetLoadState, constants::*, game_schedule::GameSchedule, game_state::GameState, helpers::*, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget, Velocity}, player::{KickRecovery, Player}};
 
@@ -136,11 +136,10 @@ fn dribble(
 		gizmos.arrow(ball_translation.0, ball_translation.0 - to_control_point, bevy::color::palettes::css::RED);
 
 		let dist_squared = to_control_point.length_squared();
-		if dist_squared < PLAYER_MAX_CONTROL_DISTANCE * PLAYER_MAX_CONTROL_DISTANCE{
-			if closest.is_none() || closest.unwrap().dist_squared > dist_squared{ 
+		if dist_squared < PLAYER_MAX_CONTROL_DISTANCE * PLAYER_MAX_CONTROL_DISTANCE
+			&& (closest.is_none() || closest.unwrap().dist_squared > dist_squared){ 
 				closest = Some(ControlCandidate { dist_squared, entity, to_control_point, velocity:*velocity });
 			}
-		}
 	}
 	if closest.is_none(){
 		return;
@@ -223,7 +222,7 @@ fn do_movement(
 ){
 	let (mut translation, mut ball_velocity, ball) = ball.into_inner();
 	let ball_translation = translation.0;
-	let mut ball_movement =  ball_velocity.to_frame_motion(ball_translation, 0., time.delta_secs());
+	let mut ball_movement =  ball_velocity.as_frame_motion(ball_translation, 0., time.delta_secs());
 	let mut time_offset = 0.;
 	let mut collision_count:usize = 0;
 	let mut delta = time.delta_secs();
@@ -242,12 +241,12 @@ fn do_movement(
 			if ball.possession == Some(entity){ continue; }
 
 			let movement = match velocity{
-				Some(velocity) => velocity.to_frame_motion(translation.0, time_offset, delta),
+				Some(velocity) => velocity.as_frame_motion(translation.0, time_offset, delta),
 				None => FrameMotion{ origin: translation.0, direction: Dir3::Y, distance: 0. }
 			};
 
-			if collider.broad_phase(&movement, &sphere_sweep){
-				if let Some(hit) = collider.narrow_phase( &movement, entity, &sphere_sweep){
+			if collider.broad_phase(&movement, &sphere_sweep)
+				&& let Some(hit) = collider.narrow_phase( &movement, entity, &sphere_sweep){
 
 				info!("collided with {}", name);
 					if nearest.is_none() || hit.time < nearest.unwrap().time{
@@ -259,7 +258,6 @@ fn do_movement(
 						}
 					};
 				};
-			}
 		}
 		if let Some(collision) = nearest{
 			collision_count += 1;
@@ -282,7 +280,7 @@ fn do_movement(
 			let next_ball_vel = ball_v - (1.0 + restitution) * approach_speed * normal_vec;
 			//info!("bounce! {}", restitution);
 			ball_velocity.from_vec3(next_ball_vel);
-			ball_movement = ball_velocity.to_frame_motion(collision_point_shifted, 0., delta);
+			ball_movement = ball_velocity.as_frame_motion(collision_point_shifted, 0., delta);
 		}
 		else{
 			translation.0 = ball_movement.final_position();

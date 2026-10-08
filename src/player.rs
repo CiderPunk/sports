@@ -1,9 +1,9 @@
-use bevy::{input::mouse::MouseButton::Forward, math::{NormedVectorSpace, VectorSpace}, prelude::*};
+use bevy::prelude::*;
 use std::{f32::consts::PI, time::Duration };
-use bevy::{gltf::GltfMesh, light::NotShadowCaster, prelude::*, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
+use bevy::{gltf::GltfMesh, light::NotShadowCaster, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
 
-use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{Ball, MAX_INTERACTION_DISTANCE_SQUARED}, constants::*, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, match_state::{MatchState, PlayerSnapshot}, physics::{Collider, ColliderShape, CylinderTarget, EPSILON_TOLERANCE, Velocity}, team::{self, PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
+use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{Ball, MAX_INTERACTION_DISTANCE_SQUARED}, constants::*, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, match_state::{MatchState, PlayerSnapshot}, physics::{Collider, ColliderShape, CylinderTarget, EPSILON_TOLERANCE, Velocity}, team::{PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_TURN_SPEED: f32 = 3.0;
@@ -359,7 +359,7 @@ fn do_movement(
 const ACTIVE_PLAYER_TRANSITION_DISTANCE:f32 = 20.0;
 
 fn check_active_player(
-	mut commands:Commands,
+	_commands:Commands,
 	
 	mut message_writer:MessageWriter<ActivePlayerSwitch>,
 	ball:Single<(&PhysicalTranslation, &Velocity), With<Ball>>,
@@ -392,13 +392,12 @@ fn check_active_player(
 				}
 			}
 		}
-		if transition && closest_entity != active_player{
+		if transition && closest_entity != active_player
 
-			if let Some(new_active) = closest_entity{
+			&& let Some(new_active) = closest_entity{
 
 				message_writer.write(ActivePlayerSwitch(new_active));
 			}
-		}
 	}
 }
 
@@ -487,7 +486,7 @@ fn player_intent_event(
 	ball:Single<(&PhysicalTranslation, &mut Velocity), With<Ball>>,
 	match_state:Res<MatchState>,
 ){
-	let Ok((player_translation, player_rotation, player_velocity, player_movement, team)) = player_query.get(event.entity) else {
+	let Ok((player_translation, player_rotation, _player_velocity, player_movement, team)) = player_query.get(event.entity) else {
 		return; 
 	};
 	let (ball_translation, mut velocity) = ball.into_inner();
@@ -569,7 +568,7 @@ fn player_context_event(
 	player_query:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, &PlayerMovement), Without<Ball>>,
 	ball:Single<&PhysicalTranslation, With<Ball>>
 ){
-	let Ok((player_translation, player_rotation, player_velocity, player_movement)) = player_query.get(event.entity) else {
+	let Ok((player_translation, _player_rotation, _player_velocity, _player_movement)) = player_query.get(event.entity) else {
 		return; 
 	};
 	let ball_translation = ball.into_inner();
