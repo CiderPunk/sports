@@ -523,9 +523,10 @@ fn player_intent_event(
 			for candidate in pass_candidates{
 				//dont pass to yourself that'd be dumb!
 				if candidate.entity == event.entity{ continue; }
+
 				let diff = candidate.translation - player_translation.0;
 				if diff.length_squared() > MAX_PASS_DISTANCE * MAX_PASS_DISTANCE{ continue; }
-				let angle = diff.angle_between(forward);
+				let angle = diff.angle_between(forward).abs();
 				if angle < MAX_PASS_DEFLECTION {
 					let distance_angle = (0.1 + angle) * diff.length();
 					if best_distance_angle < Some(distance_angle){
@@ -542,7 +543,7 @@ fn player_intent_event(
 				let shoot_vector = (predicted_location - player_translation.0).normalize();
 				velocity.direction = Dir3::new_unchecked(shoot_vector);
 				velocity.speed = PASS_SPEED;
-				info!("Pass to {} travet time {}", candidate.entity, eta);
+				info!("Pass to {} travel time {}", candidate.entity, eta);
 				message_writer.write(ActivePlayerSwitch(candidate.entity));
 			}
 			else{
