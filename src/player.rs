@@ -359,8 +359,6 @@ fn do_movement(
 const ACTIVE_PLAYER_TRANSITION_DISTANCE:f32 = 20.0;
 
 fn check_active_player(
-	mut commands:Commands,
-	
 	mut message_writer:MessageWriter<ActivePlayerSwitch>,
 	ball:Single<(&PhysicalTranslation, &Velocity), With<Ball>>,
 	teams:Query<&TeamMembers, With<PlayerControlled>>,
@@ -485,7 +483,8 @@ fn player_intent_event(
 	mut commands:Commands,
 	player_query:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, &PlayerMovement, &TeamMember), Without<Ball>>,
 	ball:Single<(&PhysicalTranslation, &mut Velocity), With<Ball>>,
-	match_state:Res<MatchState>,
+	match_state:Res<MatchState>,	
+	mut message_writer:MessageWriter<ActivePlayerSwitch>,
 ){
 	let Ok((player_translation, player_rotation, player_velocity, player_movement, team)) = player_query.get(event.entity) else {
 		return; 
@@ -544,6 +543,7 @@ fn player_intent_event(
 				velocity.direction = Dir3::new_unchecked(shoot_vector);
 				velocity.speed = PASS_SPEED;
 				info!("Pass to {} travet time {}", candidate.entity, eta);
+				message_writer.write(ActivePlayerSwitch(candidate.entity));
 			}
 			else{
 				velocity.direction = Dir3::new_unchecked(shoot_dir);
