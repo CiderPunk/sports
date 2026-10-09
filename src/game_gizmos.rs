@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use bevy::{color::palettes::css::{BLUE, GREEN, PINK, RED, WHITE, YELLOW}, math::VectorSpace, prelude::*};
+use bevy::{color::palettes::css::{BLUE, GREEN, PINK, RED, WHITE, YELLOW}, prelude::*};
 use strum::VariantArray;
 use strum_macros::VariantArray;
 
@@ -71,7 +71,7 @@ pub struct GameGizmoStore{
 fn init_gizmos(
 	mut commands:Commands,
 	mut gizmo_assets: ResMut<Assets<GizmoAsset>>,
-	mut spawn_writer: MessageWriter<GizmoSpawnMessage>
+	_spawn_writer: MessageWriter<GizmoSpawnMessage>
 ){
 	let mut cross_colours:HashMap<GizmoColour, Handle<GizmoAsset>> = HashMap::new();
 	let mut sphere_colours:HashMap<GizmoColour, Handle<GizmoAsset>> = HashMap::new();

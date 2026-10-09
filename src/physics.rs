@@ -6,7 +6,7 @@ pub const EPSILON_TOLERANCE: f32 = 1e-3;
 pub struct PhysicsPlugin;
 
 impl Plugin for PhysicsPlugin{
-	fn build(&self, app: &mut App) {
+	fn build(&self, _app: &mut App) {
 	}
 }
 
@@ -55,7 +55,7 @@ impl Velocity{
 		}
 	}
 
-	pub fn to_frame_motion(&self, origin: Vec3, offset_seconds:f32, frame_period:f32) -> FrameMotion{
+	pub fn as_frame_motion(&self, origin: Vec3, offset_seconds:f32, frame_period:f32) -> FrameMotion{
 		FrameMotion{
 			origin: origin + (self.direction * self.speed * offset_seconds),
 			direction: self.direction,

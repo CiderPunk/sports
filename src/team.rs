@@ -1,5 +1,5 @@
 use core::slice;
-use bevy::{color::palettes::{css::{BLACK, BLUE, DARK_BLUE, LIMEGREEN, RED, WHITE, YELLOW}, tailwind::GRAY_700}, prelude::*};
+use bevy::{color::palettes::{css::{BLUE, DARK_BLUE, LIMEGREEN, RED, WHITE, YELLOW}, tailwind::GRAY_700}, prelude::*};
 use crate::kit::{KitColour, KitConfiguration};
 
 pub struct TeamPlugin;
