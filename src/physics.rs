@@ -2,14 +2,12 @@ use bevy::{math::FloatPow, prelude::*};
 
 pub const EPSILON_TOLERANCE: f32 = 1e-3; 
 
-
 pub struct PhysicsPlugin;
 
 impl Plugin for PhysicsPlugin{
 	fn build(&self, _app: &mut App) {
 	}
 }
-
 
 #[derive(Debug, Clone, Copy)]
 pub struct FrameMotion{
@@ -71,11 +69,19 @@ pub enum ColliderShape{
 	Plane(PlaneTarget),
 }
 
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ColliderFilter{
+	#[default]
+	None
+}
+
 #[derive(Component, Debug, Clone)]
 #[require(PhysicalProperties)]
-pub struct Collider{
+pub struct Collider<M:Default + Copy = ColliderFilter>{
 	pub	shape:ColliderShape,
 	pub restitution:f32,
+	pub filter: M,
 }
 
 #[derive(Component, Debug, Clone)]
@@ -86,10 +92,9 @@ pub struct  PhysicalProperties{
 
 impl Default for PhysicalProperties{
 	fn default() -> Self {
-			Self{ restitution: 0.8, mass: 10000. }
+		Self{ restitution: 0.8, mass: 10000. }
 	}
 }
-
 
 pub struct SphereSweep {
 	pub start: Vec3,
@@ -109,7 +114,7 @@ pub trait Collidable {
 	fn narrow_phase(&self, movement:&FrameMotion, entity:Entity, sphere: &SphereSweep) -> Option<HitResult>;
 }
 
-impl Collidable for Collider{
+impl <M:Default + Copy> Collidable for Collider<M>{
 		fn broad_phase(&self, movement:&FrameMotion, sphere: &SphereSweep) -> bool {
 			match &self.shape{
 				ColliderShape::Cylinder(cylinder_target) => cylinder_target.broad_phase(movement, sphere),

@@ -25,8 +25,8 @@ fn init_match_state(
 	if let Some((entity,_)) =  teams.iter().find(|(_, team)| team.top ){
 		match_state.top_team = Some(entity);		
 	}
-	match_state.half_length = pitch_config.length * 0.5;
-	match_state.half_width = pitch_config.width * 0.5;
+	match_state.half_length = pitch_config.half_length ;
+	match_state.half_width = pitch_config.half_width;
 }
 
 
