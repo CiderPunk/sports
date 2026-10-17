@@ -1,7 +1,7 @@
 use bevy::{camera::visibility::NoFrustumCulling, math::FloatPow, prelude::*};
 use std::f32::consts::PI;
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, constants::*, game_schedule::GameSchedule, game_state::GameState, helpers::*, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget, Velocity}, player::{KickRecovery, Player}};
+use crate::{assets::AssetLoadState, constants::*, game_schedule::GameSchedule, game_state::GameState, helpers::*, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget, Velocity}, pitch::{PitchAreaMask, PitchConfiguration}, player::{KickRecovery, Player}};
 
 const BALL_SCALE: f32 = 0.5;
 pub const BALL_RADIUS:f32 = 0.25 * BALL_SCALE;
@@ -97,6 +97,7 @@ fn spawn_ball(
 		Collider{ 
 			shape: ColliderShape::Sphere( SphereTarget{ radius: BALL_RADIUS }),
 			restitution:BALL_RESTITUTION,
+			filter: PitchAreaMask::ANY,
 		},
 		Velocity{ direction: Dir3::X, speed:7.4 },
 		PhysicalTranslation(Vec3::new(-30.,10. ,0.)),
@@ -217,8 +218,9 @@ fn do_rotation(
 
 fn do_movement(
 	ball:Single<(&mut PhysicalTranslation, &mut Velocity, &Ball)>,
-	colliders:Query<(Entity, &Collider, &PhysicalTranslation, Option<&Velocity>, &Name), Without<Ball>>,
+	colliders:Query<(Entity, &Collider<PitchAreaMask>, &PhysicalTranslation, Option<&Velocity>, &Name), Without<Ball>>,
 	time:Res<Time<Fixed>>,
+	pitch_config:Res<PitchConfiguration>,
 ){
 	let (mut translation, mut ball_velocity, ball) = ball.into_inner();
 	let ball_translation = translation.0;
@@ -228,6 +230,38 @@ fn do_movement(
 	let mut delta = time.delta_secs();
 
 	while delta > 0. && collision_count < 3 {
+		let mut filter = PitchAreaMask::ANY; 
+		//decide pitch position
+		//end zone?
+		if ball_movement.origin.z.abs() > pitch_config.half_length *0.75{
+			let south = ball_movement.origin.z.signum() == 1.0;
+			//out of play?
+			if ball_movement.origin.z.abs() > pitch_config.half_length{
+				//in goal???
+				if ball_movement.origin.x.abs() < pitch_config.half_goal_width 
+					&& ball_movement.origin.y < pitch_config.goal_height 
+					&& ball_movement.origin.z < pitch_config.half_length + pitch_config.goal_depth{
+					
+					filter = filter.combine(match south {
+						true => PitchAreaMask::SOUTH_GOAL_INSIDE,
+						false => PitchAreaMask::NORTH_GOAL_INSIDE,
+					});
+				}
+				else{
+					filter = filter.combine(match south {
+						true => PitchAreaMask::SOUTH_GOAL_OUTSIDE,
+						false => PitchAreaMask::NORTH_GOAL_OUTSIDE,
+					});
+				}
+			}
+			else{
+				filter = filter.combine(match south {
+					true => PitchAreaMask::SOUTH,
+					false => PitchAreaMask::NORTH,
+				});
+			}
+		}
+
 		let sphere_sweep = SphereSweep{ 
 			start: ball_translation, 
 			movement: ball_movement,
@@ -236,28 +270,33 @@ fn do_movement(
 		let mut nearest:Option<HitResult> = None;
 		let mut target_velocity = Vec3::ZERO;
 		let mut restitution = 0.;
+
+		info!("pitch_mask {:?}", filter);
+
 		for (entity, collider, translation, velocity, name) in colliders{
-
 			if ball.possession == Some(entity){ continue; }
+			if !filter.contains(collider.filter) { 
+			 	continue; 
+			}
 
-			let movement = match velocity{
+			let target_movement = match velocity{
 				Some(velocity) => velocity.as_frame_motion(translation.0, time_offset, delta),
 				None => FrameMotion{ origin: translation.0, direction: Dir3::Y, distance: 0. }
 			};
+ 
+			if collider.broad_phase(&target_movement, &sphere_sweep)
+				&& let Some(hit) = collider.narrow_phase( &target_movement, entity, &sphere_sweep){
 
-			if collider.broad_phase(&movement, &sphere_sweep)
-				&& let Some(hit) = collider.narrow_phase( &movement, entity, &sphere_sweep){
-
-				info!("collided with {}", name);
-					if nearest.is_none() || hit.time < nearest.unwrap().time{
-						nearest = Some(hit);
-						restitution = collider.restitution;
-						target_velocity = match velocity {
-							Some(velocity) => velocity.to_vec3(),
-							None =>  Vec3::ZERO,
-						}
+			info!("collided with {}", name);
+				if nearest.is_none() || hit.time < nearest.unwrap().time{
+					nearest = Some(hit);
+					restitution = collider.restitution;
+					target_velocity = match velocity {
+						Some(velocity) => velocity.to_vec3(),
+						None =>  Vec3::ZERO,
 					};
-				};
+				}
+			}
 		}
 		if let Some(collision) = nearest{
 			collision_count += 1;
