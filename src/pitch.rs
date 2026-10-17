@@ -59,7 +59,7 @@ impl Plugin for PitchPlugin{
 	}
 }
 
-#[derive(AssetCollection, Resource)]
+#[derive(AssetCollection, Resource, Clone)]
 pub struct PitchAssets {
   //#[asset(path = "pitch.glb#Scene0")]
   //pub pitch_scene: Handle<WorldAsset>,
@@ -247,7 +247,7 @@ fn line(
 }
 
 
-fn pitch_border_list(half_width:f32, half_length:f32, half_border:f32, material:Handle<StandardMaterial>)-> impl SceneList{
+fn pitch_borders(half_width:f32, half_length:f32, half_border:f32, material:Handle<StandardMaterial>)-> impl SceneList{
 	bsn_list!{
 		#Top_Border
 		@pitch_segment(half_width + (half_border * 2.), half_border,	Vec3::new(0., 0., half_length + half_border), material.clone())
@@ -557,16 +557,90 @@ fn goal_model(
 	}
 }
 
+
+
+fn pitch_stripes(
+	pitch_assets:PitchAssets,
+	pitch_config:PitchConfiguration,
+) -> impl SceneList{
+	let stripe_width = (pitch_config.half_width * 2.) / pitch_config.stripe_count as f32;
+	let start_offset = (-pitch_config.half_width) + (stripe_width * 0.5);
+	
+	let stripes: Vec<_> = (0 .. pitch_config.stripe_count).map(move |i| {
+		pitch_segment(
+			0.5 * stripe_width, 
+			pitch_config.half_length, 
+			Vec3::new((i as f32 * stripe_width) + start_offset, 0., 0.), 
+			match i % 2 {
+				0 => pitch_assets.pitch_dark_material.clone(),
+				_other => pitch_assets.pitch_light_material.clone(),
+			}
+		)
+	}).collect();
+	bsn_list!{ {stripes} }
+}
+
+
+fn pitch_side(
+	pitch_assets:PitchAssets,
+	pitch_config:PitchConfiguration,
+){
+
+
+}
+
+fn build_pitch(
+	pitch_assets:PitchAssets,
+	pitch_config:PitchConfiguration,
+) -> impl SceneList{
+	bsn_list!{
+		{ pitch_borders(pitch_config.half_width,pitch_config.half_length,0.5* pitch_config.border, pitch_assets.pitch_border_material.clone()) }
+		--
+		{ pitch_stripes(pitch_assets.clone(), pitch_config.clone()) }
+		--
+		#Centre_Line
+		@line(pitch_config.half_width * 2., pitch_config.line_width, true, true, pitch_assets.line_material.clone())
+		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, 0.))
+		--
+		#Bottom_Line
+		@line(pitch_config.half_width *2., pitch_config.line_width, true, true, pitch_assets.line_material.clone())
+		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, pitch_config.half_length))
+		--
+		#Top_Line
+		@line(pitch_config.half_width * 2., pitch_config.line_width, true, false, pitch_assets.line_material.clone())
+		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, -pitch_config.half_length))
+		--
+		#Right_Side_Line
+		@line(pitch_config.half_length * 2., pitch_config.line_width, false, true, pitch_assets.line_material.clone())
+		Transform::from_translation(Vec3::new(pitch_config.half_width, LINE_FLOAT_HEIGHT, 0.))
+		--
+		#Left_Side_Line
+		@line(pitch_config.half_length * 2., pitch_config.line_width, false, false, pitch_assets.line_material.clone())
+		Transform::from_translation(Vec3::new(-pitch_config.half_width, LINE_FLOAT_HEIGHT, 0.))
+		--
+		#Centre_Circle
+		@arc(pitch_config.centre_circle_radius, pitch_config.line_width, 0., 2. * PI, 64, pitch_assets.line_material.clone())
+		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, 0.))
+		--
+		#Centre_Spot
+		@spot(0.5, pitch_assets.spot_material.clone())
+		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT,0.))
+	}
+}
+
 fn spawn_pitch(
 	mut commands:Commands,
 	pitch_assets:Res<PitchAssets>,
 	pitch_config:Res<PitchConfiguration>,
 ){
+	commands.spawn_scene_list(build_pitch(pitch_assets.clone(), pitch_config.clone()));
+}
+/*
 	let half_width = pitch_config.half_width;
 	let half_length = pitch_config.half_length;
 
 	commands.spawn_scene_list(	
-		pitch_border_list(half_width,half_length,0.5* pitch_config.border, pitch_assets.pitch_border_material.clone())
+		pitch_borders(half_width,half_length,0.5* pitch_config.border, pitch_assets.pitch_border_material.clone())
 	);
 	let stripe_width = (half_width * 2.) / pitch_config.stripe_count as f32;
 	let start_offset = (-half_width) + (stripe_width * 0.5);
@@ -672,9 +746,9 @@ fn spawn_pitch(
 	});
 }
 
+ */
 
-
-#[derive(Resource)]
+#[derive(Resource, Clone)]
 pub struct PitchConfiguration{
 	pub half_width:f32,
 	pub half_length:f32,
