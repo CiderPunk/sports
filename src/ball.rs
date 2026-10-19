@@ -1,7 +1,7 @@
 use bevy::{camera::visibility::NoFrustumCulling, math::FloatPow, prelude::*};
 use std::f32::consts::PI;
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, constants::*, game_schedule::GameSchedule, game_state::GameState, helpers::*, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget, Velocity}, pitch::{PitchAreaMask, PitchConfiguration}, player::{KickRecovery, Player}};
+use crate::{assets::AssetLoadState, constants::*, game_schedule::GameSchedule, game_state::GameState, helpers::*, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget, Velocity}, pitch::PitchConfiguration, player::{KickRecovery, Player}, shared::{PitchAreaMask, SoccerCollider}};
 
 const BALL_SCALE: f32 = 0.5;
 pub const BALL_RADIUS:f32 = 0.25 * BALL_SCALE;
@@ -94,7 +94,7 @@ fn spawn_ball(
 		Ball{
     possession: None,
 		},
-		Collider{ 
+		SoccerCollider{ 
 			shape: ColliderShape::Sphere( SphereTarget{ radius: BALL_RADIUS }),
 			restitution:BALL_RESTITUTION,
 			filter: PitchAreaMask::ANY,
@@ -218,7 +218,7 @@ fn do_rotation(
 
 fn do_movement(
 	ball:Single<(&mut PhysicalTranslation, &mut Velocity, &Ball)>,
-	colliders:Query<(Entity, &Collider<PitchAreaMask>, &PhysicalTranslation, Option<&Velocity>, &Name), Without<Ball>>,
+	colliders:Query<(Entity, &SoccerCollider, &PhysicalTranslation, Option<&Velocity>, &Name), Without<Ball>>,
 	time:Res<Time<Fixed>>,
 	pitch_config:Res<PitchConfiguration>,
 ){
@@ -234,31 +234,25 @@ fn do_movement(
 		//decide pitch position
 		//end zone?
 		if ball_movement.origin.z.abs() > pitch_config.half_length *0.75{
-			let south = ball_movement.origin.z.signum() == 1.0;
+			filter = filter.combine(
+				if ball_movement.origin.z.signum() == 1.0 {
+				 	PitchAreaMask::SOUTH 
+				} else { 
+					PitchAreaMask::NORTH
+				});
 			//out of play?
 			if ball_movement.origin.z.abs() > pitch_config.half_length{
 				//in goal???
-				if ball_movement.origin.x.abs() < pitch_config.half_goal_width 
+				filter = filter.combine(
+					if ball_movement.origin.x.abs() < pitch_config.half_goal_width 
 					&& ball_movement.origin.y < pitch_config.goal_height 
 					&& ball_movement.origin.z < pitch_config.half_length + pitch_config.goal_depth{
-					
-					filter = filter.combine(match south {
-						true => PitchAreaMask::SOUTH_GOAL_INSIDE,
-						false => PitchAreaMask::NORTH_GOAL_INSIDE,
-					});
-				}
-				else{
-					filter = filter.combine(match south {
-						true => PitchAreaMask::SOUTH_GOAL_OUTSIDE,
-						false => PitchAreaMask::NORTH_GOAL_OUTSIDE,
-					});
-				}
-			}
-			else{
-				filter = filter.combine(match south {
-					true => PitchAreaMask::SOUTH,
-					false => PitchAreaMask::NORTH,
-				});
+						PitchAreaMask::INSIDE_GOAL
+					}
+					else{
+						PitchAreaMask::OUTSIDE_GOAL
+					}
+				);
 			}
 		}
 
@@ -275,6 +269,8 @@ fn do_movement(
 
 		for (entity, collider, translation, velocity, name) in colliders{
 			if ball.possession == Some(entity){ continue; }
+
+			//info!("collision test {}", name);
 			if !filter.contains(collider.filter) { 
 			 	continue; 
 			}

@@ -14,7 +14,7 @@ impl Plugin for InterpolationPlugin{
 	}
 }
 
-#[derive(Component)]
+#[derive(Component, Clone, Default)]
 #[require(PreviousTranslation)]
 pub struct PhysicalTranslation(pub Vec3);
 
@@ -30,7 +30,7 @@ pub struct PhysicalRotation(pub Quat);
 pub struct PreviousRotation(pub Quat);
 
 
-#[derive(Component)]
+#[derive(Component,Clone,Default)]
 pub struct Static;
 
 

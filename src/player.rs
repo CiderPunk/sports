@@ -3,7 +3,7 @@ use std::{f32::consts::PI, time::Duration };
 use bevy::{gltf::GltfMesh, light::NotShadowCaster, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
 
-use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{Ball, MAX_INTERACTION_DISTANCE_SQUARED}, constants::*, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, match_state::{MatchState, PlayerSnapshot}, physics::{Collider, ColliderShape, CylinderTarget, EPSILON_TOLERANCE, Velocity}, pitch::PitchAreaMask, team::{PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
+use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{Ball, MAX_INTERACTION_DISTANCE_SQUARED}, constants::*, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, match_state::{MatchState, PlayerSnapshot}, physics::{Collider, ColliderShape, CylinderTarget, EPSILON_TOLERANCE, Velocity}, shared::{PitchAreaMask, SoccerCollider}, team::{PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_TURN_SPEED: f32 = 3.0;
@@ -178,7 +178,7 @@ fn spawn_players(
 				Velocity{ direction: Dir3::Y, speed: 0. },
 				PhysicalRotation(Quat::from_rotation_y(facing)),
 				Name::new("Player"),
-				Collider{ 
+				SoccerCollider{ 
 					shape: ColliderShape::Cylinder( CylinderTarget{ 
 						direction: Dir3::Y, 
 						radius: PLAYER_COLLISION_RADIUS, 

@@ -1,4 +1,4 @@
-use bevy::{math::FloatPow, prelude::*};
+use bevy::{math::FloatPow, prelude::*, window::WindowLevel::Normal};
 
 pub const EPSILON_TOLERANCE: f32 = 1e-3; 
 
@@ -62,21 +62,20 @@ impl Velocity{
 	}
 }
 
-#[derive( Debug, Clone)]
+#[derive( Debug, Clone, Default)]
 pub enum ColliderShape{
 	Cylinder(CylinderTarget), 
 	Sphere(SphereTarget),
 	Plane(PlaneTarget),
+	#[default]
+	None,
 }
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ColliderFilter{
-	#[default]
-	None
-}
+pub struct ColliderFilter(pub u32);
 
-#[derive(Component, Debug, Clone)]
+#[derive(Component, Debug, Clone, Default)]
 #[require(PhysicalProperties)]
 pub struct Collider<M:Default + Copy = ColliderFilter>{
 	pub	shape:ColliderShape,
@@ -120,6 +119,7 @@ impl <M:Default + Copy> Collidable for Collider<M>{
 				ColliderShape::Cylinder(cylinder_target) => cylinder_target.broad_phase(movement, sphere),
 				ColliderShape::Sphere(sphere_target) => sphere_target.broad_phase(movement, sphere),
 				ColliderShape::Plane(plane_target) => plane_target.broad_phase(movement, sphere),
+				ColliderShape::None => false,
 			}
 		}
 
@@ -128,6 +128,7 @@ impl <M:Default + Copy> Collidable for Collider<M>{
 				ColliderShape::Cylinder(cylinder_target) => cylinder_target.narrow_phase(movement, entity,sphere),
 				ColliderShape::Sphere(sphere_target) => sphere_target.narrow_phase(movement,entity, sphere),
 				ColliderShape::Plane(plane_target) => plane_target.narrow_phase(movement,entity, sphere),
+				ColliderShape::None => None,
 			}
 		}
 }
@@ -138,6 +139,14 @@ pub struct CylinderTarget{
 	pub radius:f32,
 	pub length:f32,
 }
+
+impl Default for CylinderTarget{
+	fn default()->Self{
+		Self{ direction: Dir3::Y, radius: 1.0, length: 1.0 }
+	}
+
+}
+
 
 impl Collidable for CylinderTarget{
 	fn broad_phase(&self, movement:&FrameMotion, sphere: &SphereSweep) -> bool {
@@ -219,6 +228,12 @@ impl Collidable for CylinderTarget{
 #[derive( Debug, Clone)]
 pub struct PlaneTarget{
 	pub normal:Dir3,
+}
+
+impl Default for PlaneTarget{
+	fn default() -> Self {
+		Self{ normal: Dir3::Y }
+	}
 }
 
 impl Collidable for PlaneTarget{
