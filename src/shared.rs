@@ -8,16 +8,16 @@ pub struct PitchAreaMask(pub u32);
 // Provide standard bitwise operations for your project
 impl PitchAreaMask {
 	pub const ANY: Self = Self(1 << 0);
-	pub const NORTH: Self = Self(1 << 1);
-	pub const SOUTH: Self = Self(1 << 2); 
-	pub const INSIDE_GOAL: Self = Self(1 << 3);
-	pub const OUTSIDE_GOAL: Self = Self(1 << 4); 
+	pub const NORTH: Self = Self(1 << 1); //2
+	pub const SOUTH: Self = Self(1 << 2); //4
+	pub const INSIDE_GOAL: Self = Self(1 << 3); //8
+	pub const OUTSIDE_GOAL: Self = Self(1 << 4); //16
 
 	pub const SOUTH_OUTSIDE_GOAL: Self = Self(PitchAreaMask::SOUTH.0 | PitchAreaMask::OUTSIDE_GOAL.0);
 	pub const NORTH_OUTSIDE_GOAL: Self = Self(PitchAreaMask::NORTH.0 | PitchAreaMask::OUTSIDE_GOAL.0);
 
 	pub fn contains(&self, other: Self) -> bool {
-		(self.0 & other.0) != 0
+		(self.0 & other.0) == other.0
 	}	
 
 	pub fn combine(&self, other: Self) -> Self {

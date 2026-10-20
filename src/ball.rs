@@ -246,7 +246,7 @@ fn do_movement(
 				filter = filter.combine(
 					if ball_movement.origin.x.abs() < pitch_config.half_goal_width 
 					&& ball_movement.origin.y < pitch_config.goal_height 
-					&& ball_movement.origin.z < pitch_config.half_length + pitch_config.goal_depth{
+					&& ball_movement.origin.z.abs() < pitch_config.half_length + pitch_config.goal_depth{
 						PitchAreaMask::INSIDE_GOAL
 					}
 					else{
