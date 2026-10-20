@@ -1,14 +1,16 @@
 use std::f32::consts::PI;
 
-use bevy::{asset::RenderAssetUsages, color::palettes::css::{RED, WHITE, YELLOW}, gltf::GltfMesh, light::NotShadowCaster, mesh::Indices, prelude::*, };
+use bevy::{asset::RenderAssetUsages, color::palettes::css::{RED, WHITE, YELLOW}, gltf::GltfMesh, light::NotShadowCaster, math::VectorSpace, mesh::Indices, prelude::*, };
 use bevy_asset_loader::prelude::*;
 
-use crate::{assets::AssetLoadState, game_state::GameState, get_gltf_primative, interpolation::{PhysicalTranslation, Static}, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}, physics::{Collider, CylinderTarget, PlaneTarget}};
+use crate::{assets::AssetLoadState, game_state::GameState, get_gltf_primative, interpolation::{PhysicalTranslation, Static}, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}, physics::{Collider, ColliderFilter, ColliderShape, CylinderTarget, PlaneTarget}, shared::{PitchAreaMask, SoccerCollider}};
 
 const LINE_FLOAT_HEIGHT: f32 = 0.05;
 const PITCH_RESTITUTION:f32 = 0.65;
 const WALL_RESTITUTION:f32 = 0.9;
 const POLE_RESTITUTION:f32 = 0.9;
+const NET_RESTITUTION:f32 = 0.1;
+
 
 pub struct PitchPlugin;
 impl Plugin for PitchPlugin{
@@ -16,8 +18,6 @@ impl Plugin for PitchPlugin{
 		app
 			.insert_resource( 
 				PitchConfiguration{
-					width:64.,
-					length:90.,
 					..default()
 				}
 			)
@@ -26,12 +26,12 @@ impl Plugin for PitchPlugin{
 				.load_collection::<PitchAssets>(),
 			)			
 			.add_systems(OnEnter(GameState::Initialize), (modify_materials, init_pitch_models))
-			.add_systems(OnEnter(GameState::Playing), (spawn_pitch, spawn_pitch_models, spawn_pitch_colliders));
+			.add_systems(OnEnter(GameState::Playing), (spawn_pitch));
 
 	}
 }
 
-#[derive(AssetCollection, Resource)]
+#[derive(AssetCollection, Resource, Clone)]
 pub struct PitchAssets {
   //#[asset(path = "pitch.glb#Scene0")]
   //pub pitch_scene: Handle<WorldAsset>,
@@ -57,7 +57,7 @@ pub struct PitchAssets {
 }
 
 
-#[derive(Resource)]
+#[derive(Resource, Clone)]
 pub struct PitchModels{
 	pub goal_left:Handle<Mesh>,
 	pub goal_right:Handle<Mesh>,
@@ -150,7 +150,6 @@ fn arc(
 			))
 		MeshMaterial3d<StandardMaterial>(material)
 		NotShadowCaster 
-
 	}
 }
 
@@ -219,43 +218,43 @@ fn line(
 }
 
 
-fn pitch_border_list(half_width:f32, half_length:f32, half_border:f32, material:Handle<StandardMaterial>)-> impl SceneList{
-	bsn_list![
-		//top
+fn pitch_borders(half_width:f32, half_length:f32, half_border:f32, material:Handle<StandardMaterial>)-> impl SceneList{
+	bsn_list!{
 		#Top_Border
-		pitch_segment(half_width + (half_border * 2.), half_border,	Vec3::new(0., 0., half_length + half_border), material.clone()),
-		//bottom
+		NotShadowCaster
+		@pitch_segment(half_width + (half_border * 2.), half_border,	Vec3::new(0., 0., half_length + half_border), material.clone())
+		--
 		#Bottom_Border
-		pitch_segment(half_width + (half_border * 2.), half_border,	Vec3::new(0., 0.,  -half_length - half_border), material.clone()),
-		//right
+		NotShadowCaster
+		@pitch_segment(half_width + (half_border * 2.), half_border,	Vec3::new(0., 0.,  -half_length - half_border), material.clone())
+		--
 		#Right_Border
-		pitch_segment(half_border, half_length, Vec3::new(half_width + half_border, 0., 0.), material.clone()),
-		//left
+		NotShadowCaster
+		@pitch_segment(half_border, half_length, Vec3::new(half_width + half_border, 0., 0.), material.clone())
+		--
+
 		#Left_Border
-		pitch_segment(half_border, half_length, Vec3::new(-half_width - half_border, 0., 0.), material.clone()),
-	]
+		NotShadowCaster
+		@pitch_segment(half_border, half_length, Vec3::new(-half_width - half_border, 0., 0.), material.clone())
+	}
 }
 
 
 fn box_lines(width:f32, length:f32, thickness:f32, material:Handle<StandardMaterial>)-> impl Scene{
 	bsn!{
-		
-		NotShadowCaster 
-
+		NotShadowCaster
 		Children [
-			#Horizontal_Line
-			line(width, thickness, true, true, material.clone())
-			Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, length)),
-
-
-			#Left_Line
-			line(length, thickness, false, true, material.clone())
-			Transform::from_translation(Vec3::new(width * 0.5, LINE_FLOAT_HEIGHT, length * 0.5)),
-
-
-			#Right_Line
-			line(length, thickness, false, false, material.clone())
-			Transform::from_translation(Vec3::new(-width * 0.5, LINE_FLOAT_HEIGHT, length * 0.5)),
+			#Horizontal_Line	
+			@line(width, thickness, true, true, material.clone())
+			Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, length))
+			--
+			#Left_Line 
+			@line(length, thickness, false, true, material.clone())
+			Transform::from_translation(Vec3::new(width * 0.5, LINE_FLOAT_HEIGHT, length * 0.5))
+			--
+			#Right_Line	
+			@line(length, thickness, false, false, material.clone())
+			Transform::from_translation(Vec3::new(-width * 0.5, LINE_FLOAT_HEIGHT, length * 0.5))
 		]
 	}
 }
@@ -275,22 +274,98 @@ fn modify_materials(
 	}
 }
 
+fn pitch_side_colliders(
+	pitch_config:PitchConfiguration,
+	end:f32,
+	end_filter:PitchAreaMask,
+) -> impl SceneList{
+	let pole_radius = pitch_config.pole_radius;
+	let goal_height = pitch_config.goal_height;
+	let goal_width = pitch_config.half_goal_width * 2.0;
+	let half_goal = pitch_config.half_goal_width;
+	let outside_filter = PitchAreaMask::OUTSIDE_GOAL.combine(end_filter);
+	let inside_filter = PitchAreaMask::INSIDE_GOAL.combine(end_filter);
+	let back = Dir3::from_xyz_unchecked(0.,0.,-1.0 * end);
 
+	info!("inside_filter: {}", inside_filter.0);
+	bsn_list!{
+		#Right_Post
+		SoccerCollider{ 
+			shape: ColliderShape::Cylinder(
+				CylinderTarget { 
+					direction: Dir3::Y,
+					radius: pole_radius, 
+					length: goal_height, 
+				}
+			)
+			restitution: POLE_RESTITUTION,
+			filter: end_filter,
+		}
+		PhysicalTranslation(Vec3::new(pitch_config.half_goal_width, 0., (end * pitch_config.half_length)))
+		Static
+		--
+		#Left_Post
+		SoccerCollider{ 
+			shape: ColliderShape::Cylinder(CylinderTarget { 
+				direction: Dir3::Y, 
+				radius: pole_radius, 
+				length: goal_height,
+			}),
+			restitution: POLE_RESTITUTION,
+			filter: end_filter,
+		}
+		Static
+		PhysicalTranslation(Vec3::new(-pitch_config.half_goal_width, 0., end * pitch_config.half_length))
+		--
+		#Top_Bar
+		SoccerCollider{ 
+			shape: ColliderShape::Cylinder(CylinderTarget { 
+				direction: Dir3::X, 
+				radius: pole_radius,
+			 	length: goal_width }),
+			restitution: POLE_RESTITUTION,
+			filter: end_filter,
+		}
+		Static
+		PhysicalTranslation(Vec3::new(-half_goal, pitch_config.goal_height, end * pitch_config.half_length))
+		--
+		#Goal_Back
+		SoccerCollider{
+			shape: ColliderShape::Plane(PlaneTarget { normal: back }),
+			restitution: NET_RESTITUTION,
+			filter: inside_filter,
+		}
+		Static
+		PhysicalTranslation(Vec3::new(0.,0., end * (pitch_config.half_length + pitch_config.goal_depth)))
+		--
+		#Outside_Goal_Top
+		SoccerCollider{ 
+			shape: ColliderShape::Cylinder(CylinderTarget { 
+				direction: Dir3::X, 
+				radius: goal_height,
+			 	length: goal_width }),
+			restitution: NET_RESTITUTION,
+			filter: outside_filter,			
+		}
+		PhysicalTranslation(Vec3::new(-half_goal,0., end * pitch_config.half_length))
+	}
+}
+/*
 fn spawn_pitch_colliders(
 	mut commands:Commands,
 	pitch_config:Res<PitchConfiguration>,
 ){	
-	let half_pitch_length = pitch_config.length * 0.5;
-	let half_total_width = (pitch_config.width * 0.5) + pitch_config.border;
+	let half_pitch_length = pitch_config.half_length;
+	let half_total_width = pitch_config.half_width + pitch_config.border;
 	let half_total_length = half_pitch_length + pitch_config.border;
-	let half_goal = pitch_config.goal_width * 0.5;
-
+	let half_goal = pitch_config.half_goal_width;
 
 	commands.spawn((
 		Name::new("Ground"),
 		Collider{ 
 			shape: crate::physics::ColliderShape::Plane(PlaneTarget{ normal:Dir3::Y,  }),
 			restitution: PITCH_RESTITUTION,
+			filter: PitchAreaMask::ANY,
 		},
 		Static,
 		//Transform::from_xyz(0.,0.,0.),
@@ -299,18 +374,20 @@ fn spawn_pitch_colliders(
 			//4 walls
 			(
 				Name::new("left wall"),
-				Collider{ 
+				SoccerCollider{ 
 					shape: crate::physics::ColliderShape::Plane(PlaneTarget { normal: Dir3::X }),
 					restitution: WALL_RESTITUTION,
+					filter: PitchAreaMask::ANY,
 				},
 				PhysicalTranslation(Vec3::new(-half_total_width, 0., 0.)),
 				Static,
 			),
 			(
 				Name::new("right wall"),
-				Collider{ 
+				SoccerCollider{ 
 					shape: crate::physics::ColliderShape::Plane(PlaneTarget { normal: Dir3::NEG_X }),
 					restitution: WALL_RESTITUTION,
+					filter: PitchAreaMask::ANY,
 				},
 				PhysicalTranslation(Vec3::new(half_total_width, 0., 0.)),
 				Static,
@@ -320,6 +397,7 @@ fn spawn_pitch_colliders(
 				Collider{ 
 					shape: crate::physics::ColliderShape::Plane(PlaneTarget { normal: Dir3::Z }),
 					restitution: WALL_RESTITUTION,
+					filter: PitchAreaMask::NORTH_GOAL_OUTSIDE,
 				},
 				PhysicalTranslation(Vec3::new(0., 0., -half_total_length)),
 				Static,
@@ -329,27 +407,28 @@ fn spawn_pitch_colliders(
 				Collider{ 
 					shape: crate::physics::ColliderShape::Plane(PlaneTarget { normal: Dir3::NEG_Z }),
 					restitution: WALL_RESTITUTION,
+					filter: PitchAreaMask::SOUTH_GOAL_OUTSIDE,
 				},
 				PhysicalTranslation(Vec3::new(0., 0., half_total_length)),
 				Static,
 			),
 			//bottom goal
 			(
-
 				Name::new("near right post"),
 				Collider{ 
 					shape: crate::physics::ColliderShape::Cylinder(CylinderTarget { direction: Dir3::Y, radius: pitch_config.pole_radius, length: pitch_config.goal_height }),
 					restitution: POLE_RESTITUTION,
+					filter: PitchAreaMask::SOUTH,
 				},
 				PhysicalTranslation(Vec3::new(half_goal, 0., half_pitch_length)),
 				Static,
-
 			),
 			(
 				Name::new("near left post"),
 				Collider{ 
 					shape: crate::physics::ColliderShape::Cylinder(CylinderTarget { direction: Dir3::Y, radius: pitch_config.pole_radius, length: pitch_config.goal_height }),
 					restitution: POLE_RESTITUTION,
+					filter: PitchAreaMask::SOUTH,
 				},
 				Static,
 				PhysicalTranslation(Vec3::new(-half_goal, 0., half_pitch_length)),
@@ -357,19 +436,50 @@ fn spawn_pitch_colliders(
 			(
 				Name::new("near top bar"),
 				Collider{ 
-					shape: crate::physics::ColliderShape::Cylinder(CylinderTarget { direction: Dir3::X, radius: pitch_config.pole_radius, length: pitch_config.goal_width }),
+					shape: crate::physics::ColliderShape::Cylinder(CylinderTarget { direction: Dir3::X, radius: pitch_config.pole_radius, length: pitch_config.half_goal_width }),
 					restitution: POLE_RESTITUTION,
+					filter: PitchAreaMask::SOUTH,
 				},
 				Static,
 				PhysicalTranslation(Vec3::new(-half_goal, pitch_config.goal_height, half_pitch_length)),
 			),
-
+			(
+				Name::new("near goal back"),
+				Collider{
+					shape: crate::physics::ColliderShape::Plane(PlaneTarget { normal: Dir3::NEG_Z }),
+					restitution: NET_RESTITUTION,
+					filter: PitchAreaMask::SOUTH_GOAL_INSIDE,
+				},
+				Static,
+				PhysicalTranslation(Vec3::new(0.,0., half_pitch_length + pitch_config.goal_depth)),
+			),
+			(
+				Name::new("near goal left"),
+				Collider{
+					shape: crate::physics::ColliderShape::Plane(PlaneTarget { normal: Dir3::X}),
+					restitution: NET_RESTITUTION,
+					filter: PitchAreaMask::SOUTH_GOAL_INSIDE,
+				},
+				Static,
+				PhysicalTranslation(Vec3::new(-pitch_config.half_goal_width,0., 0.)),
+			),
+			(
+				Name::new("near goal right"),
+				Collider{
+					shape: crate::physics::ColliderShape::Plane(PlaneTarget { normal: Dir3::NEG_X}),
+					restitution: NET_RESTITUTION,
+					filter: PitchAreaMask::SOUTH_GOAL_INSIDE,
+				},
+				Static,
+				PhysicalTranslation(Vec3::new(pitch_config.half_goal_width,0., 0.)),
+			),
 			//top goal
 			(
 				Name::new("far left post"),
 				Collider{ 
 					shape: crate::physics::ColliderShape::Cylinder(CylinderTarget { direction: Dir3::Y, radius: pitch_config.pole_radius, length: pitch_config.goal_height }),
 					restitution: POLE_RESTITUTION,
+					filter: PitchAreaMask::NORTH,
 				},
 				Static,
 				PhysicalTranslation(Vec3::new(half_goal, 0., -half_pitch_length))
@@ -379,91 +489,47 @@ fn spawn_pitch_colliders(
 				Collider{ 
 					shape: crate::physics::ColliderShape::Cylinder(CylinderTarget { direction: Dir3::Y, radius: pitch_config.pole_radius, length: pitch_config.goal_height }),
 					restitution: POLE_RESTITUTION,
+					filter: PitchAreaMask::NORTH,
 				},
 				PhysicalTranslation(Vec3::new(-half_goal, 0., -half_pitch_length)),
 			),
 			(
 				Name::new("far top bar"),
 				Collider{ 
-					shape: crate::physics::ColliderShape::Cylinder(CylinderTarget { direction: Dir3::X, radius: pitch_config.pole_radius, length: pitch_config.goal_width }),
+					shape: crate::physics::ColliderShape::Cylinder(CylinderTarget { direction: Dir3::X, radius: pitch_config.pole_radius, length: pitch_config.half_goal_width }),
 					restitution: POLE_RESTITUTION,
+					filter: PitchAreaMask::NORTH,
 				},
 				Static,
 				PhysicalTranslation(Vec3::new(-half_goal, pitch_config.goal_height, -half_pitch_length)),
 			),
 
-
 		],
 	));
 }
-
-fn spawn_pitch_models(
-	mut commands:Commands,
-	pitch_models:Res<PitchModels>,
-	pitch_config:Res<PitchConfiguration>,
-	mut kit_gen:KitGenerator,
-){
-	let half_pitch_length = pitch_config.length * 0.5;
-	let half_pitch_width = pitch_config.width * 0.5;
-	commands.spawn_scene_list(
-		bsn_list![
-			(
-				Transform{
-					translation:Vec3::new(0.,0.,half_pitch_length),
-					rotation:Quat::from_axis_angle(Vec3::Y, PI),
-				}
-				goal_model(&pitch_models, &pitch_config)
-			),
-			(
-				Transform::from_xyz(0.,0., -half_pitch_length)
-				goal_model(&pitch_models, &pitch_config)
-			)
-		]);
-
-
-	let corners = [
-		Vec3::new(-half_pitch_width, 0., half_pitch_length),
-		Vec3::new(half_pitch_width, 0., half_pitch_length),
-		Vec3::new(-half_pitch_width, 0., -half_pitch_length),
-		Vec3::new(half_pitch_width, 0., -half_pitch_length),
-	];
-
-
-		let kit = KitConfiguration{ 
-			pattern: KitPattern::Quatered,
-			colour_primary: KitColour::from_srgba(RED), 
-			colour_secondary:KitColour::from_srgba(WHITE),
-			colour_tertiary:KitColour::from_srgba(YELLOW),
-			shirt_number: 0, 
-		};
-
-
-	let flag_tex = kit_gen.get_or_generate_flag(kit);
-	let material_handle = kit_gen.make_material(pitch_models.flag_material.clone(), flag_tex);
-
-
-	corners.iter().for_each(|corner|{
-		commands.spawn((
-			Transform::from_translation(*corner),
-			Mesh3d(pitch_models.flag.clone()),
-			MeshMaterial3d(material_handle.clone()),
-			
-			children![
-				(
-					Transform::from_translation(Vec3::ZERO),
-					Mesh3d(pitch_models.flag_pole.clone()),
-					MeshMaterial3d(pitch_models.goal_material.clone()),
-				)
-			]
-		));
-	});
+ */
+fn flag_model(
+	pitch_models:PitchModels,
+	flag_material:Handle<StandardMaterial>,
+) -> impl Scene{
+	let flag_model = pitch_models.flag.clone();
+	let flag_pole = pitch_models.flag_pole.clone();
+	let pole_material = pitch_models.net_material.clone();
+	bsn!{
+		Mesh3d(flag_model)
+		MeshMaterial3d<StandardMaterial>(flag_material)
+		Children[
+			Transform::from_translation(Vec3::ZERO)
+			Mesh3d(flag_pole)
+			MeshMaterial3d<StandardMaterial>(pole_material)
+		]
+	}
 
 }
 
-
 fn goal_model(	
-	pitch_models:&Res<PitchModels>,
-	pitch_config:&Res<PitchConfiguration>,
+	pitch_models:PitchModels,
+	pitch_config:PitchConfiguration,
 )-> impl Scene{
 
 	let goal_left = pitch_models.goal_left.clone();
@@ -473,156 +539,283 @@ fn goal_model(
 	let goal_material_1 = pitch_models.goal_material.clone();
 	let goal_material_2 = pitch_models.goal_material.clone();
 	let goal_height = pitch_config.goal_height;
-	let goal_width = pitch_config.goal_width;
-	let half_goal_width = goal_width * 0.5;
+	let half_goal_width = pitch_config.half_goal_width;
+
 	bsn!{
 		Children[
-			(
-				Transform::from_xyz(-half_goal_width, goal_height, 0.)
-				Mesh3d(goal_left)
-				MeshMaterial3d<StandardMaterial>(goal_material_1)
-			),
-			(
-				Transform::from_xyz(half_goal_width, goal_height, 0.)
-				Mesh3d(goal_right)
-				MeshMaterial3d<StandardMaterial>(goal_material_2)
-			),
-			(
-				Transform{
-					translation:Vec3::new(0.,goal_height, 0.),
-					scale:Vec3::new(half_goal_width, 1., 1.),
-				}
-				Mesh3d(net)
-				MeshMaterial3d<StandardMaterial>(net_material)
-			)
+
+			Transform::from_xyz(-half_goal_width, goal_height, 0.)
+			Mesh3d(goal_left)
+			MeshMaterial3d<StandardMaterial>(goal_material_1)
+			--
+			Transform::from_xyz(half_goal_width, goal_height, 0.)
+			Mesh3d(goal_right)
+			MeshMaterial3d<StandardMaterial>(goal_material_2)
+			--
+			Transform{
+				translation:Vec3::new(0.,goal_height, 0.),
+				scale:Vec3::new(half_goal_width, 1., 1.),
+			}
+			Mesh3d(net)
+			MeshMaterial3d<StandardMaterial>(net_material)
 		]
 	}
+}
+
+
+
+fn pitch_stripes(
+	pitch_assets:PitchAssets,
+	pitch_config:PitchConfiguration,
+) -> impl SceneList{
+	let stripe_width = (pitch_config.half_width * 2.) / pitch_config.stripe_count as f32;
+	let start_offset = (-pitch_config.half_width) + (stripe_width * 0.5);
+	
+	let stripes: Vec<_> = (0 .. pitch_config.stripe_count).map(move |i| {
+		pitch_segment(
+			0.5 * stripe_width, 
+			pitch_config.half_length, 
+			Vec3::new((i as f32 * stripe_width) + start_offset, 0., 0.), 
+			match i % 2 {
+				0 => pitch_assets.pitch_dark_material.clone(),
+				_other => pitch_assets.pitch_light_material.clone(),
+			}
+		)
+	}).collect();
+	bsn_list!{ {stripes} }
+}
+
+
+
+fn pitch_side(
+	pitch_assets:PitchAssets,
+	pitch_models:PitchModels,
+	pitch_config:PitchConfiguration,
+	flag_material:Handle<StandardMaterial>,
+) -> impl Scene{
+	let penalty_arc_angle = ((pitch_config.penalty_length - pitch_config.penalty_spot_from_goal) / pitch_config.penalty_arc_radius)
+	.clamp(-1., 1.).acos();
+	let penalty_spot = pitch_config.half_length - pitch_config.penalty_spot_from_goal;
+	bsn!{
+		Transform::from_translation(Vec3::ZERO)
+		Children[
+			#End_Line
+			@line(pitch_config.half_width *2., pitch_config.line_width, true, true, pitch_assets.line_material.clone())
+			Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, pitch_config.half_length))
+			--
+			#Right_Side_Line
+			@line(pitch_config.half_length * 2., pitch_config.line_width, false, true, pitch_assets.line_material.clone())
+			Transform::from_translation(Vec3::new(pitch_config.half_width, LINE_FLOAT_HEIGHT, 0.))
+			--
+			#Penalty_Box
+			@box_lines(pitch_config.penalty_width, -pitch_config.penalty_length, pitch_config.line_width,pitch_assets.line_material.clone())
+			Transform::from_translation(Vec3::new(0., 0., pitch_config.half_length))
+			--
+			#Goal_Box
+			@box_lines(pitch_config.goal_area_width, -pitch_config.goal_area_length, pitch_config.line_width, pitch_assets.line_material.clone())
+			Transform::from_translation(Vec3::new(0., 0., pitch_config.half_length))
+			--
+			#Penalty_Arc
+			@arc(pitch_config.penalty_arc_radius, pitch_config.line_width, (1.5 * PI) -penalty_arc_angle, 2. * penalty_arc_angle, 24, pitch_assets.line_material.clone())
+			Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, penalty_spot + (pitch_config.line_width * 0.5)))
+			--
+			#Penalty_Spot
+			@spot(0.5, pitch_assets.spot_material.clone())
+			Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, penalty_spot))
+			--
+			#Left_Corner_Arc
+			@arc(pitch_config.corner_arc_radius, pitch_config.line_width, 1.5*PI, 0.5 * PI, 8, pitch_assets.line_material.clone())
+			Transform::from_translation(Vec3::new(-pitch_config.half_width, LINE_FLOAT_HEIGHT, pitch_config.half_length))
+			--
+			#Right_Corner_Arc
+			@arc(pitch_config.corner_arc_radius, pitch_config.line_width, PI, 0.5 * PI, 8, pitch_assets.line_material.clone())
+			Transform::from_translation(Vec3::new(pitch_config.half_width, LINE_FLOAT_HEIGHT, pitch_config.half_length))
+			--
+			#Goal_Model
+			Transform::from_xyz(0.,0., pitch_config.half_length).with_rotation(Quat::from_axis_angle(Vec3::Y, PI))
+			@goal_model(pitch_models.clone(), pitch_config.clone())		
+			--
+			#Left_Flag_Model
+			Transform::from_xyz(-pitch_config.half_width,0.,pitch_config.half_length)
+			@flag_model(pitch_models.clone(), flag_material.clone())
+			--
+			#Right_Flag_Model
+			Transform::from_xyz(pitch_config.half_width,0.,pitch_config.half_length)
+			@flag_model(pitch_models.clone(), flag_material.clone())
+		]
+	}
+}
+
+fn build_pitch(
+	pitch_assets:PitchAssets,
+	pitch_models:PitchModels,
+	pitch_config:PitchConfiguration,
+	flag_material:Handle<StandardMaterial>,
+) -> impl Scene{
+	let half_total_width  = pitch_config.half_width + pitch_config.border;
+	let half_total_length  = pitch_config.half_length + pitch_config.border;
+	bsn!{
+		#Pitch
+		Transform::from_translation(Vec3::ZERO)
+		Children[
+			{ pitch_borders(pitch_config.half_width,pitch_config.half_length,0.5* pitch_config.border, pitch_assets.pitch_border_material.clone()) }
+			--
+			{ pitch_stripes(pitch_assets.clone(), pitch_config.clone()) }
+			--
+			#Centre_Line
+			@line(pitch_config.half_width * 2., pitch_config.line_width, true, true, pitch_assets.line_material.clone())
+			Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, 0.))
+			--
+			#Centre_Circle
+			@arc(pitch_config.centre_circle_radius, pitch_config.line_width, 0., 2. * PI, 64, pitch_assets.line_material.clone())
+			Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, 0.))
+			--
+			#Centre_Spot
+			@spot(0.5, pitch_assets.spot_material.clone())
+			Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT,0.))
+			--
+			#Near_side
+			@pitch_side(pitch_assets.clone(), pitch_models.clone(), pitch_config.clone(), flag_material.clone())			
+			--
+			#Far_side
+			@pitch_side(pitch_assets.clone(), pitch_models.clone(), pitch_config.clone(), flag_material.clone())
+			Transform::from_rotation(Quat::from_axis_angle(Vec3::Y, PI))		
+			--
+			#Ground_Collider
+			SoccerCollider{ 
+				shape: ColliderShape::Plane(PlaneTarget{ normal:Dir3::Y }),
+				restitution: PITCH_RESTITUTION,
+				filter: PitchAreaMask::ANY,
+			}
+			Transform::from_translation(Vec3::ZERO)
+			Static
+			PhysicalTranslation(Vec3::ZERO)
+			--
+			#Left_Wall
+			SoccerCollider{ 
+				shape: ColliderShape::Plane(PlaneTarget { normal: Dir3::NEG_X }),
+				restitution: WALL_RESTITUTION,
+				filter: PitchAreaMask::ANY,
+			}
+			Static
+			PhysicalTranslation(Vec3::new(half_total_width, 0., 0.))
+			--		
+			#Right_Wall
+			SoccerCollider{ 
+				shape: ColliderShape::Plane(PlaneTarget { normal: Dir3::X }),
+				restitution: WALL_RESTITUTION,
+				filter: PitchAreaMask::ANY,
+			}
+			Static
+			PhysicalTranslation(Vec3::new(-half_total_width, 0., 0.))
+			--
+			#North_Wall
+			SoccerCollider{ 
+				shape: ColliderShape::Plane(PlaneTarget { normal: Dir3::Z }),
+				restitution: WALL_RESTITUTION,
+				filter: PitchAreaMask::NORTH_OUTSIDE_GOAL,
+			}
+			PhysicalTranslation(Vec3::new(0., 0., -half_total_length))
+			Static
+			--
+			#South_Wall
+			SoccerCollider{ 
+				shape: ColliderShape::Plane(PlaneTarget { normal: Dir3::NEG_Z }),
+				restitution: WALL_RESTITUTION,
+				filter: PitchAreaMask::SOUTH_OUTSIDE_GOAL,
+			}
+			PhysicalTranslation(Vec3::new(0., 0., half_total_length))
+			Static
+			--
+			#Inside_Goal_Left
+			SoccerCollider{
+				shape: ColliderShape::Plane(PlaneTarget { normal: Dir3::X}),
+				restitution: NET_RESTITUTION,
+				filter: PitchAreaMask::INSIDE_GOAL,
+			}
+			Static
+			PhysicalTranslation(Vec3::new(-pitch_config.half_goal_width,0., 0.))
+			--
+			#Inside_Goal_Right
+			SoccerCollider{
+				shape: ColliderShape::Plane(PlaneTarget { normal: Dir3::NEG_X}),
+				restitution: NET_RESTITUTION,
+				filter: PitchAreaMask::INSIDE_GOAL,
+			}
+			Static
+			PhysicalTranslation(Vec3::new(pitch_config.half_goal_width,0., 0.))
+			--
+			#Outside_Goal_Left
+			SoccerCollider{
+				shape: ColliderShape::Plane(PlaneTarget { normal: Dir3::NEG_X}),
+				restitution: NET_RESTITUTION,
+				filter: PitchAreaMask::OUTSIDE_GOAL,
+			}
+			Static
+			PhysicalTranslation(Vec3::new(-pitch_config.half_goal_width,0., 0.))
+			--
+			#Outside_Goal_Right
+			SoccerCollider{
+				shape: ColliderShape::Plane(PlaneTarget { normal: Dir3::X}),
+				restitution: NET_RESTITUTION,
+				filter: PitchAreaMask::OUTSIDE_GOAL,
+			}
+			Static
+			PhysicalTranslation(Vec3::new(pitch_config.half_goal_width,0., 0.))
+
+			--
+			#Goal_Top
+			SoccerCollider{
+				shape: ColliderShape::Plane(PlaneTarget { normal: Dir3::NEG_Y }),
+				restitution: NET_RESTITUTION,
+				filter: PitchAreaMask::INSIDE_GOAL,
+			}
+			Static
+			PhysicalTranslation(Vec3::new(0.,pitch_config.goal_height,0.))
+			--
+			{ pitch_side_colliders(pitch_config.clone(), 1., PitchAreaMask::SOUTH) }	
+			--
+			{ pitch_side_colliders(pitch_config.clone(), -1., PitchAreaMask::NORTH) }	
+		
+
+		]
+	}
+}
+
+
+fn make_flag_material(
+	mut kit_gen:KitGenerator,
+	pitch_models:PitchModels,
+) -> Handle<StandardMaterial>{
+
+	let kit = KitConfiguration{ 
+		pattern: KitPattern::Quatered,
+		colour_primary: KitColour::from_srgba(RED), 
+		colour_secondary:KitColour::from_srgba(WHITE),
+		colour_tertiary:KitColour::from_srgba(YELLOW),
+		shirt_number: 0, 
+	};
+	let flag_tex = kit_gen.get_or_generate_flag(kit);
+	kit_gen.make_material(pitch_models.flag_material.clone(), flag_tex)
 }
 
 fn spawn_pitch(
 	mut commands:Commands,
 	pitch_assets:Res<PitchAssets>,
 	pitch_config:Res<PitchConfiguration>,
+	pitch_models:Res<PitchModels>,
+ 	kit_gen:KitGenerator,
 ){
-	let half_width = pitch_config.width * 0.5;
-	let half_length = pitch_config.length * 0.5;
+	let flag_material = make_flag_material(kit_gen, pitch_models.clone());
+	commands.spawn_scene(build_pitch(pitch_assets.clone(),pitch_models.clone(), pitch_config.clone(), flag_material));
 
-	commands.spawn_scene_list(	
-		pitch_border_list(half_width,half_length,0.5* pitch_config.border, pitch_assets.pitch_border_material.clone())
-	);
-	let stripe_width = pitch_config.width / pitch_config.stripe_count as f32;
-	let start_offset = (-half_width) + (stripe_width * 0.5);
-	for n in 0 .. pitch_config.stripe_count{
-		commands.spawn_scene(pitch_segment(
-			0.5 * stripe_width, 
-			half_length, 
-			Vec3::new((n as f32 * stripe_width) + start_offset, 0., 0.), 
-			match n % 2 {
-				0 => pitch_assets.pitch_dark_material.clone(),
-				_other => pitch_assets.pitch_light_material.clone(),
-			} 
-		));
-	}
-
-	let line_material = pitch_assets.line_material.clone();
-	let spot_material = pitch_assets.spot_material.clone();
-
-	let flip = Quat::from_axis_angle(Vec3::Y, PI);
-	let penalty_arc_angle = ((pitch_config.penalty_length - pitch_config.penalty_spot_from_goal) / pitch_config.penalty_arc_radius)
-		.clamp(-1., 1.).acos();
-	let penalty_spot = half_length - pitch_config.penalty_spot_from_goal;
-	//info!("penalty arc angle: {}", penalty_arc_angle);
-
-	let half_line_width = 0.25 * pitch_config.line_width;
-	commands.spawn_scene_list(bsn_list![
-
-
-		//centre
-		#Centre_Line
-		line(pitch_config.width, pitch_config.line_width, true, true, line_material.clone())
-		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, 0.)),
-		//bottom
-		#Bottom_Line
-		line(pitch_config.width, pitch_config.line_width, true, true, line_material.clone())
-		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, half_length)),
-		//top
-		#Top_Line
-		line(pitch_config.width, pitch_config.line_width, true, false, line_material.clone())
-		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, -half_length)),
-		//right
-		#Right_Side_Line
-		line(pitch_config.length, pitch_config.line_width, false, true, line_material.clone())
-		Transform::from_translation(Vec3::new(half_width, LINE_FLOAT_HEIGHT, 0.)),
-		//left
-		#Left_Side_Line
-		line(pitch_config.length, pitch_config.line_width, false, false, line_material.clone())
-		Transform::from_translation(Vec3::new(-half_width, LINE_FLOAT_HEIGHT, 0.)),
-		//top penalty box
-		#Top_Penalty_Box
-		box_lines(pitch_config.penalty_width, pitch_config.penalty_length, pitch_config.line_width,line_material.clone())
-		Transform::from_translation(Vec3::new(0., 0., -half_length)),
-		//bottom penalty box
-		#Bottom_Penalty_Box
-		box_lines(pitch_config.penalty_width, pitch_config.penalty_length, pitch_config.line_width,line_material.clone())
-		Transform{ translation: Vec3::new(0.,0.,half_length), rotation:flip },
-		//top goal box
-		#Top_Goal_Box
-		box_lines(pitch_config.goal_area_width, pitch_config.goal_area_length, pitch_config.line_width,line_material.clone())
-		Transform::from_translation(Vec3::new(0., 0., -half_length)),
-		//bottom goal box
-		#Bottom_Goal_Box
-		box_lines(pitch_config.goal_area_width, pitch_config.goal_area_length, pitch_config.line_width,line_material.clone())
-		Transform{ translation: Vec3::new(0.,0.,half_length), rotation:flip },
-		//centre circle
-		#Centre_Circle
-		arc(pitch_config.centre_circle_radius, pitch_config.line_width, 0., 2. * PI, 64, line_material.clone())
-		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, 0.)),
-		//TL corner
-		#Top_Left_Corner_Arc
-		arc(pitch_config.corner_arc_radius, pitch_config.line_width, 0., 0.5 * PI, 8, line_material.clone())
-		Transform::from_translation(Vec3::new(-half_width, LINE_FLOAT_HEIGHT, -half_length)),
-		//TR corner
-		#Top_Right_Corner_Arc
-		arc(pitch_config.corner_arc_radius, pitch_config.line_width, 0.5*PI, 0.5 * PI, 8, line_material.clone())
-		Transform::from_translation(Vec3::new(half_width, LINE_FLOAT_HEIGHT, -half_length)),
-		//BR corner
-		#Bottom_Right_Corner_Arc
-		arc(pitch_config.corner_arc_radius, pitch_config.line_width, 1.0*PI, 0.5 * PI, 8, line_material.clone())
-		Transform::from_translation(Vec3::new(half_width, LINE_FLOAT_HEIGHT, half_length)),
-		//BL corner
-		#Bottom_Left_Corner_Arc
-		arc(pitch_config.corner_arc_radius, pitch_config.line_width, 1.5*PI, 0.5 * PI, 8, line_material.clone())
-		Transform::from_translation(Vec3::new(-half_width, LINE_FLOAT_HEIGHT, half_length)),
-		//top penalty arc
-		#Top_Penalty_Arc
-		arc(pitch_config.penalty_arc_radius, pitch_config.line_width, (0.5 * PI) -penalty_arc_angle, 2. * penalty_arc_angle, 24, line_material.clone())
-		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, -penalty_spot - half_line_width)),
-		//bottom penalty arc
-		#Bottom_Penalty_Arc
-		arc(pitch_config.penalty_arc_radius, pitch_config.line_width, (1.5 * PI) -penalty_arc_angle, 2. * penalty_arc_angle, 24, line_material.clone())
-		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, penalty_spot + half_line_width)),
-		//centre spot
-		#Centre_Spot
-		spot(0.5, spot_material.clone())
-		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT,0.)),
-		//top penalty spot
-		#Top_Penalty_Spot
-		spot(0.5, spot_material.clone())
-		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, -penalty_spot)),
-		//bottom penalty spot
-		#Bottom_Penalty_Spot
-		spot(0.5, spot_material.clone())
-		Transform::from_translation(Vec3::new(0., LINE_FLOAT_HEIGHT, penalty_spot)),
-
-	]);
+info!("test: {}", PitchAreaMask::SOUTH.combine(PitchAreaMask::OUTSIDE_GOAL).combine(PitchAreaMask::ANY).contains(PitchAreaMask::SOUTH.combine(PitchAreaMask::INSIDE_GOAL)));
 }
 
-
-
-#[derive(Resource)]
+#[derive(Resource, Clone)]
 pub struct PitchConfiguration{
-	pub width:f32,
-	pub length:f32,
+	pub half_width:f32,
+	pub half_length:f32,
 	border:f32,
 	stripe_count:u32,
 	line_width:f32,
@@ -631,8 +824,9 @@ pub struct PitchConfiguration{
 	penalty_length:f32,
 	goal_area_width:f32,
 	goal_area_length:f32,
-	pub goal_width:f32,
+	pub half_goal_width:f32,
 	pub goal_height:f32,
+	pub goal_depth:f32,
 	corner_arc_radius:f32,
 	pub penalty_spot_from_goal:f32,
 	penalty_arc_radius:f32,
@@ -642,17 +836,18 @@ pub struct PitchConfiguration{
 impl Default for PitchConfiguration{
 	fn default() -> Self {
 		Self { 
-			width: 64., 
-			length: 90.,
+			half_width: 32., 
+			half_length: 45.,
 			stripe_count:16,
-			border:10.,
+			border:5.,
 			centre_circle_radius:9.16,
     	penalty_width: 40.32,
 			penalty_length:16.5,
 			goal_area_width: 18.32,
 			goal_area_length: 5.5,
-			goal_width: 7.32,
+			half_goal_width: 7.32 / 2.,
 			goal_height:2.44,
+			goal_depth:2.0,
 			corner_arc_radius: 1.,
 			penalty_spot_from_goal: 11.,
 			penalty_arc_radius: 9.15,
