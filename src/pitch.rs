@@ -10,8 +10,7 @@ const PITCH_RESTITUTION:f32 = 0.65;
 const WALL_RESTITUTION:f32 = 0.9;
 const POLE_RESTITUTION:f32 = 0.9;
 const NET_RESTITUTION:f32 = 0.1;
-
-
+const GOAL_BACK_ANGLE:f32 = PI * (1. / 3.); //maybe
 pub struct PitchPlugin;
 impl Plugin for PitchPlugin{
 	fn build(&self, app: &mut App) {
@@ -285,7 +284,10 @@ fn pitch_side_colliders(
 	let half_goal = pitch_config.half_goal_width;
 	let outside_filter = PitchAreaMask::OUTSIDE_GOAL.combine(end_filter);
 	let inside_filter = PitchAreaMask::INSIDE_GOAL.combine(end_filter);
-	let back = Dir3::from_xyz_unchecked(0.,0.,-1.0 * end);
+	
+	let goal_back = Dir3::from_xyz(0., -GOAL_BACK_ANGLE.cos() , GOAL_BACK_ANGLE.sin() * end * -1.)
+		.expect("Invalid goal back angle");
+
 
 	info!("inside_filter: {}", inside_filter.0);
 	bsn_list!{
@@ -331,7 +333,7 @@ fn pitch_side_colliders(
 		--
 		#Goal_Back
 		SoccerCollider{
-			shape: ColliderShape::Plane(PlaneTarget { normal: back }),
+			shape: ColliderShape::Plane(PlaneTarget { normal: goal_back }),
 			restitution: NET_RESTITUTION,
 			filter: inside_filter,
 		}
