@@ -39,7 +39,9 @@ pub struct Player{
 
 
 #[derive(Component)]
-pub struct ActivePlayer;
+pub struct ActiveControl{
+	pub team:Entity,
+}
 
 #[derive(Component)]
 pub struct Position(Vec2);
@@ -267,7 +269,7 @@ impl PlayerMovement{
 }
 
 fn update_active_marker_position(
-	active_player_query:Query<&GlobalTransform, With<ActivePlayer>>,
+	active_player_query:Query<&GlobalTransform, With<ActiveControl>>,
 	marker:Single<(&mut Transform, &mut Visibility), With<ActiveMarker>>,
 	time:Res<Time>,
 ){
@@ -351,7 +353,6 @@ fn do_movement(
 ){
 	let delta = time.delta_secs();
 	for (velocity, mut translation) in query{
-
 		//TODO: Collision detection!
 		translation.0 += velocity.direction * velocity.speed * delta;
 	}
@@ -363,7 +364,7 @@ fn check_active_player(
 	mut message_writer:MessageWriter<ActivePlayerSwitch>,
 	ball:Single<(&PhysicalTranslation, &Velocity), With<Ball>>,
 	teams:Query<&TeamMembers, With<PlayerControlled>>,
-	player_query:Query<(&PhysicalTranslation, Option<&ActivePlayer>)>,
+	player_query:Query<(&PhysicalTranslation, Option<&ActiveControl>)>,
 ){
 	//info!("check active");
 	let (translation, velocity) = ball.into_inner();
@@ -407,7 +408,7 @@ pub struct ActivePlayerSwitch(Entity);
 fn switch_active_player(
 	mut message_reader:MessageReader<ActivePlayerSwitch>,
 	player_query:Query<&TeamMember>,
-	previous_player_query:Query<(&TeamMember, Entity),With<ActivePlayer>>,
+	previous_player_query:Query<(&TeamMember, Entity),With<ActiveControl>>,
 	mut commands:Commands,
 ){
 	for message in message_reader.read(){
@@ -418,11 +419,11 @@ fn switch_active_player(
 			if player_team.0 == team.0{
 				//switch to same user null-op
 				if entity == message.0{ return; }
-				commands.entity(entity).remove::<ActivePlayer>();
+				commands.entity(entity).remove::<ActiveControl>();
 				break;
 			}
 		}
-		commands.entity(message.0).insert(ActivePlayer);
+		commands.entity(message.0).insert(ActiveControl{ team: team.0 });
 	}
 }
 
@@ -433,7 +434,7 @@ const POSITION_REDUCED_SPEED_FACTOR:f32 = 0.6;
 
 fn player_think(
 	match_state:Res<MatchState>,
-	players:Query<(&PhysicalTranslation, &TeamMember, &Position, &mut PlayerMovement), (With<Player>, With<ThinkNext>, Without<ActivePlayer>)>,
+	players:Query<(&PhysicalTranslation, &TeamMember, &Position, &mut PlayerMovement), (With<Player>, With<ThinkNext>, Without<ActiveControl>)>,
 ){
 	for (translation, team, position,  mut movement) in players{
 		//are we top or bottom

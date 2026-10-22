@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::*;
 
-use crate::{game_state::GameState, player::{ActivePlayer, PlayerMovement}, team::{PlayerControlled, TeamMember}};
+use crate::{game_state::GameState, player::{ActiveControl, PlayerMovement}, team::{PlayerControlled, TeamMember}};
 pub struct GameControlPlugin;
 
 impl Plugin for GameControlPlugin{
@@ -40,7 +40,7 @@ pub struct GameControl;
 
 fn direction_input_stopped(
 	_:On<Complete<MovementInput>>,
-	query:Query<&mut PlayerMovement, With<ActivePlayer>>,
+	query:Query<&mut PlayerMovement, With<ActiveControl>>,
 ){
 	//info!("Movement stopped");
 	for mut movement in query{
@@ -48,15 +48,14 @@ fn direction_input_stopped(
 	}
 }
 
-
 fn direction_input_started(
 	direction:On<Fire<MovementInput>>,
 	context:Query<&TeamInputController>,
-	query:Query<(&mut PlayerMovement, &TeamMember), With<ActivePlayer>>,
+	query:Query<(&mut PlayerMovement, &ActiveControl)>,
 ){
 	if let Ok(team) = context.get(direction.context){
-		for (mut movement, active_player_team) in query{
-			if team.0 == active_player_team.0{
+		for (mut movement, active_control) in query{
+			if active_control.team == team.0{
 				movement.direction = Vec2::new(direction.value.x, -direction.value.y);
 			}
 		}
@@ -68,7 +67,7 @@ fn direction_input_started(
 fn kick_started(
 	event:On<Fire<Kick>>,
 	context:Query<&TeamInputController>,
-	query:Query<(&mut PlayerMovement, &TeamMember), With<ActivePlayer>>,
+	query:Query<(&mut PlayerMovement, &TeamMember), With<ActiveControl>>,
 ){
 	if let Ok(team) = context.get(event.context){
 		for (mut movement, active_player_team) in query{
@@ -82,7 +81,7 @@ fn kick_started(
 fn kick_finished(
 	event:On<Complete<Kick>>,
 	context:Query<&TeamInputController>,
-	query:Query<(&mut PlayerMovement, &TeamMember), With<ActivePlayer>>,
+	query:Query<(&mut PlayerMovement, &TeamMember), With<ActiveControl>>,
 ){
 	if let Ok(team) = context.get(event.context){
 		for (mut movement, active_player_team) in query{
