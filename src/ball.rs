@@ -63,7 +63,10 @@ pub struct BallAssets {
 #[derive(Component, Debug)]
 pub struct Ball{
 	pub possession:Option<Entity>,
+	after_touch_time:Timer,
 }
+
+
 
 
 #[derive(Component, Debug)]
@@ -92,7 +95,8 @@ fn spawn_ball(
 		//Transform::from_translation(Vec3::new(0., BALL_GROUND_LEVEL ,0.)).with_scale(Vec3::splat(BALL_SCALE)),
 		Transform::from_translation(Vec3::new(-30., 10. ,0.)).with_scale(Vec3::splat(BALL_SCALE)),
 		Ball{
-    possession: None,
+			possession: None,
+			after_touch_time:Timer::from_seconds(0.5, TimerMode::Once),
 		},
 		SoccerCollider{ 
 			shape: ColliderShape::Sphere( SphereTarget{ radius: BALL_RADIUS }),
@@ -265,7 +269,7 @@ fn do_movement(
 		let mut target_velocity = Vec3::ZERO;
 		let mut restitution = 0.;
 
-		info!("pitch_mask {:?}", filter);
+		//info!("pitch_mask {:?}", filter);
 
 		for (entity, collider, translation, velocity, name) in colliders{
 			if ball.possession == Some(entity){ continue; }
