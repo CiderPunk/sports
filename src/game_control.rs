@@ -1,7 +1,8 @@
-use bevy::prelude::*;
+use bevy::{prelude::*, time::Stopwatch};
 use bevy_enhanced_input::prelude::*;
 
-use crate::{game_state::GameState, player::{ActiveControl, MovementControl}, team::{PlayerControlled, TeamMember}};
+use crate::{game_state::GameState, player::ActiveControl, team::{PlayerControlled, TeamMember}};
+
 pub struct GameControlPlugin;
 
 impl Plugin for GameControlPlugin{
@@ -37,6 +38,13 @@ pub struct TeamInputControllers(Vec<Entity>);
 
 #[derive(Component)]
 pub struct GameControl;
+
+#[derive(Component, Debug, Default)]
+pub struct MovementControl{
+	pub direction:Vec2,
+	pub kick:bool,
+	pub kick_timer:Stopwatch,
+}
 
 fn direction_input_stopped(
 	event:On<Complete<MovementInput>>,

@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use std::{f32::consts::PI, time::Duration };
 use bevy::{gltf::GltfMesh, light::NotShadowCaster, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
-use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{Ball, MAX_INTERACTION_DISTANCE_SQUARED}, constants::*, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, match_state::{MatchState, PlayerSnapshot}, physics::{Collider, ColliderShape, CylinderTarget, EPSILON_TOLERANCE, Velocity}, shared::{PitchAreaMask, SoccerCollider}, team::{PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
+use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{Ball, MAX_INTERACTION_DISTANCE_SQUARED}, constants::*, game_control::MovementControl, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, match_state::{MatchState, PlayerSnapshot}, physics::{Collider, ColliderShape, CylinderTarget, EPSILON_TOLERANCE, Velocity}, shared::{PitchAreaMask, SoccerCollider}, team::{PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_TURN_SPEED: f32 = 3.0;
@@ -33,6 +33,7 @@ impl Plugin for PlayerPlugin{
 
 #[derive(Component,Debug)]
 #[require(MovementControl)]
+#[require(TargetRotation)]
 pub struct Player{
 	kit:KitConfiguration,
 }
@@ -64,6 +65,17 @@ pub struct PlayerIntentEvent{
 pub struct PlayerContextEvent{
 	entity:Entity,
 }
+
+#[derive(Component)]
+pub struct TargetRotation(Quat);
+
+impl Default for TargetRotation{
+	fn default() -> Self {
+		Self(Quat::from_axis_angle(Vec3::Y,0.))
+	}
+}
+
+
 
 #[derive(Component)]
 #[component(storage = "SparseSet")]
@@ -173,7 +185,7 @@ fn spawn_players(
 
 			let id = commands.spawn((
 				Player{ kit },
-				MovementControl{ direction: Vec2::ZERO, target_rotation:Quat::from_axis_angle(Vec3::Y, PI), kick_timer: Stopwatch::new(), kick:false },
+				MovementControl{ direction: Vec2::ZERO, kick_timer: Stopwatch::new(), kick:false },
 				WorldAssetRoot(player_assets.player_scene.clone()),
 				Transform::default(),
 				PhysicalTranslation(Vec3::new((i as f32 * 2.) - 0.75, 0., z_pos)),
@@ -253,13 +265,7 @@ fn init_player_animations(
 
 
 
-#[derive(Component, Debug, Default)]
-pub struct MovementControl{
-	pub direction:Vec2,
-	target_rotation:Quat,
-	pub kick:bool,
-	pub kick_timer:Stopwatch,
-}
+
 /*
 impl MovementControl{
 	pub fn velocity(&self)->Vec3{
@@ -305,17 +311,17 @@ fn animate_player(
 
 fn plan_movement(
 	mut commands:Commands,
-	query:Query<(Entity, &mut MovementControl, &mut Velocity, &mut PhysicalRotation), With<Player>>,
+	query:Query<(Entity, &mut MovementControl, &mut TargetRotation, &mut Velocity, &mut PhysicalRotation), With<Player>>,
 	time:Res<Time<Fixed>>,
 ){
 	let delta = time.delta_secs();
 
-	for (entity, mut movement, mut velocity, mut rotation) in query{
-		rotation.0 = rotation.0.rotate_towards(movement.target_rotation, delta * PLAYER_TURN_SPEED * PI);
+	for (entity, mut movement, mut target_rotation, mut velocity, mut rotation) in query{
+		rotation.0 = rotation.0.rotate_towards(target_rotation.0, delta * PLAYER_TURN_SPEED * PI);
   	let movement_3d = Vec3::new(movement.direction.x, 0.0, movement.direction.y);
 
 		if let Ok((dir, length)) =  Dir3::new_and_length(movement_3d){
-			movement.target_rotation = Quat::from_rotation_arc(Vec3::Z, dir.xyz());
+			target_rotation.0 = Quat::from_rotation_arc(Vec3::Z, dir.xyz());
 			velocity.speed = length * PLAYER_SPEED;
 			velocity.direction = dir;
 		}
@@ -433,9 +439,9 @@ const POSITION_REDUCED_SPEED_FACTOR:f32 = 0.6;
 
 fn player_think(
 	match_state:Res<MatchState>,
-	players:Query<(&PhysicalTranslation, &TeamMember, &Position, &mut MovementControl), (With<Player>, With<ThinkNext>, Without<ActiveControl>)>,
+	players:Query<(&PhysicalTranslation, &TeamMember, &Position, &mut MovementControl, &mut TargetRotation), (With<Player>, With<ThinkNext>, Without<ActiveControl>)>,
 ){
-	for (translation, team, position,  mut movement) in players{
+	for (translation, team, position,  mut movement, mut target_rotation) in players{
 		//are we top or bottom
 		let top = match_state.top_team == Some(team.0);
 		let side_multiplier = if top { 1.} else { -1.};
@@ -464,7 +470,7 @@ fn player_think(
 		else{
 			movement.direction = Vec2::ZERO;
 			let diff = match_state.ball_location.with_y(0.) - translation.0.with_y(0.);
-			movement.target_rotation = Quat::from_rotation_arc(Vec3::Z, diff.normalize_or_zero());
+			target_rotation.0 = Quat::from_rotation_arc(Vec3::Z, diff.normalize_or_zero());
 		}
 
 
