@@ -46,11 +46,9 @@ impl Velocity{
 		self.direction * self.speed
 	}
 
-	pub fn from_vec3(&mut self, value:Vec3){
-		if let Ok((direction, speed)) = Dir3::new_and_length(value){
-			self.direction = direction;
-			self.speed = speed;
-		}
+	pub fn from_vec3(value:Vec3) -> Option<Self>{
+		let (direction, speed) = Dir3::new_and_length(value).ok()?;
+		Some(Self{direction, speed})
 	}
 
 	pub fn as_frame_motion(&self, origin: Vec3, offset_seconds:f32, frame_period:f32) -> FrameMotion{

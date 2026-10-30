@@ -2,15 +2,15 @@ use bevy::prelude::*;
 use std::{f32::consts::PI, time::Duration };
 use bevy::{gltf::GltfMesh, light::NotShadowCaster, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
-
-use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{Ball, MAX_INTERACTION_DISTANCE_SQUARED}, constants::*, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, match_state::{MatchState, PlayerSnapshot}, physics::{Collider, ColliderShape, CylinderTarget, EPSILON_TOLERANCE, Velocity}, shared::{PitchAreaMask, SoccerCollider}, team::{PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
+use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{AfterTouch, Ball, MAX_INTERACTION_DISTANCE_SQUARED}, constants::*, game_control::{ActiveControl, MovementControl}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, match_state::{MatchState, PlayerSnapshot}, physics::{Collider, ColliderShape, CylinderTarget, EPSILON_TOLERANCE, Velocity}, shared::{PitchAreaMask, SoccerCollider}, team::{PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_TURN_SPEED: f32 = 3.0;
 const PLAYER_COLLISION_RADIUS:f32 = 0.5;
 const PLAYER_RESTITUTION:f32 = 0.6;
 pub const PLAYER_HEIGHT:f32 = 1.8;
-//pub const PLAYER_DRAW_ANGLE:f32 = PI * 0.5;
+//maximum button hold time for max power
+const MAX_POWER_HOLD:f32 = 0.5;
 
 pub struct PlayerPlugin;
 
@@ -32,14 +32,11 @@ impl Plugin for PlayerPlugin{
 }
 
 #[derive(Component,Debug)]
-#[require(PlayerMovement)]
+#[require(MovementControl)]
+#[require(TargetRotation)]
 pub struct Player{
 	kit:KitConfiguration,
 }
-
-
-#[derive(Component)]
-pub struct ActivePlayer;
 
 #[derive(Component)]
 pub struct Position(Vec2);
@@ -62,6 +59,17 @@ pub struct PlayerIntentEvent{
 pub struct PlayerContextEvent{
 	entity:Entity,
 }
+
+#[derive(Component)]
+pub struct TargetRotation(Quat);
+
+impl Default for TargetRotation{
+	fn default() -> Self {
+		Self(Quat::from_axis_angle(Vec3::Y,0.))
+	}
+}
+
+
 
 #[derive(Component)]
 #[component(storage = "SparseSet")]
@@ -171,7 +179,7 @@ fn spawn_players(
 
 			let id = commands.spawn((
 				Player{ kit },
-				PlayerMovement{ direction: Vec2::ZERO, target_rotation:Quat::from_axis_angle(Vec3::Y, PI), kick_timer: Stopwatch::new(), kick:false },
+				MovementControl{ direction: Vec2::ZERO, kick_timer: Stopwatch::new(), kick:false },
 				WorldAssetRoot(player_assets.player_scene.clone()),
 				Transform::default(),
 				PhysicalTranslation(Vec3::new((i as f32 * 2.) - 0.75, 0., z_pos)),
@@ -251,23 +259,17 @@ fn init_player_animations(
 
 
 
-#[derive(Component, Debug, Default)]
-pub struct PlayerMovement{
-	pub direction:Vec2,
-	target_rotation:Quat,
-	pub kick:bool,
-	pub kick_timer:Stopwatch,
-}
 
-impl PlayerMovement{
+/*
+impl MovementControl{
 	pub fn velocity(&self)->Vec3{
 		let vel_2d = self.direction * PLAYER_SPEED;
 		Vec3::new(vel_2d.x, 0.0, vel_2d.y)
 	}
 }
-
+ */
 fn update_active_marker_position(
-	active_player_query:Query<&GlobalTransform, With<ActivePlayer>>,
+	active_player_query:Query<&GlobalTransform, (With<ActiveControl>, With<Player>)>,
 	marker:Single<(&mut Transform, &mut Visibility), With<ActiveMarker>>,
 	time:Res<Time>,
 ){
@@ -285,7 +287,7 @@ fn update_active_marker_position(
 }
 
 fn animate_player(
-	query:Query<(&PlayerMovement, Entity), With<Player>>,
+	query:Query<(&MovementControl, Entity), With<Player>>,
 	//mut animator_query:Query<(&mut AnimationPlayer, &mut AnimationTransitions)>,
 	mut animation_manager:AnimationManager<Player>,
 ){
@@ -300,21 +302,20 @@ fn animate_player(
 	}
 }
 
-//maximum button hold time for max power
-const MAX_POWER_HOLD:f32 = 0.5;
+
 fn plan_movement(
 	mut commands:Commands,
-	query:Query<(Entity, &mut PlayerMovement, &mut Velocity, &mut PhysicalRotation), With<Player>>,
+	query:Query<(Entity, &mut MovementControl, &mut TargetRotation, &mut Velocity, &mut PhysicalRotation), With<Player>>,
 	time:Res<Time<Fixed>>,
 ){
 	let delta = time.delta_secs();
 
-	for (entity, mut movement, mut velocity, mut rotation) in query{
-		rotation.0 = rotation.0.rotate_towards(movement.target_rotation, delta * PLAYER_TURN_SPEED * PI);
+	for (entity, mut movement, mut target_rotation, mut velocity, mut rotation) in query{
+		rotation.0 = rotation.0.rotate_towards(target_rotation.0, delta * PLAYER_TURN_SPEED * PI);
   	let movement_3d = Vec3::new(movement.direction.x, 0.0, movement.direction.y);
 
 		if let Ok((dir, length)) =  Dir3::new_and_length(movement_3d){
-			movement.target_rotation = Quat::from_rotation_arc(Vec3::Z, dir.xyz());
+			target_rotation.0 = Quat::from_rotation_arc(Vec3::Z, dir.xyz());
 			velocity.speed = length * PLAYER_SPEED;
 			velocity.direction = dir;
 		}
@@ -351,7 +352,6 @@ fn do_movement(
 ){
 	let delta = time.delta_secs();
 	for (velocity, mut translation) in query{
-
 		//TODO: Collision detection!
 		translation.0 += velocity.direction * velocity.speed * delta;
 	}
@@ -363,7 +363,7 @@ fn check_active_player(
 	mut message_writer:MessageWriter<ActivePlayerSwitch>,
 	ball:Single<(&PhysicalTranslation, &Velocity), With<Ball>>,
 	teams:Query<&TeamMembers, With<PlayerControlled>>,
-	player_query:Query<(&PhysicalTranslation, Option<&ActivePlayer>)>,
+	player_query:Query<(&PhysicalTranslation, Option<&ActiveControl>)>,
 ){
 	//info!("check active");
 	let (translation, velocity) = ball.into_inner();
@@ -407,7 +407,7 @@ pub struct ActivePlayerSwitch(Entity);
 fn switch_active_player(
 	mut message_reader:MessageReader<ActivePlayerSwitch>,
 	player_query:Query<&TeamMember>,
-	previous_player_query:Query<(&TeamMember, Entity),With<ActivePlayer>>,
+	previous_player_query:Query<(&TeamMember, Entity),With<ActiveControl>>,
 	mut commands:Commands,
 ){
 	for message in message_reader.read(){
@@ -418,11 +418,11 @@ fn switch_active_player(
 			if player_team.0 == team.0{
 				//switch to same user null-op
 				if entity == message.0{ return; }
-				commands.entity(entity).remove::<ActivePlayer>();
+				commands.entity(entity).remove::<ActiveControl>();
 				break;
 			}
 		}
-		commands.entity(message.0).insert(ActivePlayer);
+		commands.entity(message.0).insert(ActiveControl{ team: team.0 });
 	}
 }
 
@@ -433,9 +433,9 @@ const POSITION_REDUCED_SPEED_FACTOR:f32 = 0.6;
 
 fn player_think(
 	match_state:Res<MatchState>,
-	players:Query<(&PhysicalTranslation, &TeamMember, &Position, &mut PlayerMovement), (With<Player>, With<ThinkNext>, Without<ActivePlayer>)>,
+	players:Query<(&PhysicalTranslation, &TeamMember, &Position, &mut MovementControl, &mut TargetRotation), (With<Player>, With<ThinkNext>, Without<ActiveControl>)>,
 ){
-	for (translation, team, position,  mut movement) in players{
+	for (translation, team, position,  mut movement, mut target_rotation) in players{
 		//are we top or bottom
 		let top = match_state.top_team == Some(team.0);
 		let side_multiplier = if top { 1.} else { -1.};
@@ -464,7 +464,7 @@ fn player_think(
 		else{
 			movement.direction = Vec2::ZERO;
 			let diff = match_state.ball_location.with_y(0.) - translation.0.with_y(0.);
-			movement.target_rotation = Quat::from_rotation_arc(Vec3::Z, diff.normalize_or_zero());
+			target_rotation.0 = Quat::from_rotation_arc(Vec3::Z, diff.normalize_or_zero());
 		}
 
 
@@ -481,15 +481,15 @@ const PASS_SPEED:f32 = 20.;
 fn player_intent_event(
 	event:On<PlayerIntentEvent>,
 	mut commands:Commands,
-	player_query:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, &PlayerMovement, &TeamMember), Without<Ball>>,
-	ball:Single<(&PhysicalTranslation, &mut Velocity), With<Ball>>,
+	player_query:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, &MovementControl, &TeamMember), Without<Ball>>,
+	ball:Single<(Entity, &PhysicalTranslation, &mut Velocity), With<Ball>>,
 	match_state:Res<MatchState>,	
 	mut message_writer:MessageWriter<ActivePlayerSwitch>,
 ){
 	let Ok((player_translation, player_rotation, _player_velocity, player_movement, team)) = player_query.get(event.entity) else {
 		return; 
 	};
-	let (ball_translation, mut velocity) = ball.into_inner();
+	let (ball_entity, ball_translation, mut velocity) = ball.into_inner();
 	
 	let Some(to_control_point) = to_nearest_control_point(ball_translation.0, player_translation.0, player_rotation.0) else{
 		return;
@@ -560,6 +560,10 @@ fn player_intent_event(
 			//let shot_dir = Vec3::new(player_movement.direction.x, 0.2, player_movement.direction.y).normalize_or_zero();
 			velocity.direction = Dir3::new_unchecked(shoot);
 			velocity.speed = power* 60.0;
+			commands.entity(ball_entity).insert((
+				ActiveControl{ team:team.0 },
+				AfterTouch(Timer::from_seconds(0.5, TimerMode::Once))
+			));
 		},
 	}
 }
@@ -567,7 +571,7 @@ fn player_intent_event(
 
 fn player_context_event(
 	event:On<PlayerContextEvent>,
-	player_query:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, &PlayerMovement), Without<Ball>>,
+	player_query:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, &MovementControl), Without<Ball>>,
 	ball:Single<&PhysicalTranslation, With<Ball>>
 ){
 	let Ok((player_translation, _player_rotation, _player_velocity, _player_movement)) = player_query.get(event.entity) else {

@@ -1,7 +1,8 @@
-use bevy::prelude::*;
+use bevy::{prelude::*, time::Stopwatch};
 use bevy_enhanced_input::prelude::*;
 
-use crate::{game_state::GameState, player::{ActivePlayer, PlayerMovement}, team::{PlayerControlled, TeamMember}};
+use crate::{game_state::GameState, team::{PlayerControlled, TeamMember}};
+
 pub struct GameControlPlugin;
 
 impl Plugin for GameControlPlugin{
@@ -38,26 +39,45 @@ pub struct TeamInputControllers(Vec<Entity>);
 #[derive(Component)]
 pub struct GameControl;
 
-fn direction_input_stopped(
-	_:On<Complete<MovementInput>>,
-	query:Query<&mut PlayerMovement, With<ActivePlayer>>,
-){
-	//info!("Movement stopped");
-	for mut movement in query{
-		movement.direction = Vec2::ZERO;
-	}
+
+
+#[derive(Component)]
+pub struct ActiveControl{
+	pub team:Entity,
 }
 
 
-fn direction_input_started(
-	direction:On<Fire<MovementInput>>,
+
+#[derive(Component, Debug, Default)]
+pub struct MovementControl{
+	pub direction:Vec2,
+	pub kick:bool,
+	pub kick_timer:Stopwatch,
+}
+
+fn direction_input_stopped(
+	event:On<Complete<MovementInput>>,
 	context:Query<&TeamInputController>,
-	query:Query<(&mut PlayerMovement, &TeamMember), With<ActivePlayer>>,
+	query:Query<(&mut MovementControl, &ActiveControl)>,
 ){
-	if let Ok(team) = context.get(direction.context){
-		for (mut movement, active_player_team) in query{
-			if team.0 == active_player_team.0{
-				movement.direction = Vec2::new(direction.value.x, -direction.value.y);
+	if let Ok(team) = context.get(event.context){
+		for (mut movement, active_control) in query{
+			if active_control.team == team.0{
+				movement.direction = Vec2::ZERO;
+			}
+		}
+	}
+}
+
+fn direction_input_started(
+	event:On<Fire<MovementInput>>,
+	context:Query<&TeamInputController>,
+	query:Query<(&mut MovementControl, &ActiveControl)>,
+){
+	if let Ok(team) = context.get(event.context){
+		for (mut movement, active_control) in query{
+			if active_control.team == team.0{
+				movement.direction = Vec2::new(event.value.x, -event.value.y);
 			}
 		}
 	}
@@ -68,11 +88,11 @@ fn direction_input_started(
 fn kick_started(
 	event:On<Fire<Kick>>,
 	context:Query<&TeamInputController>,
-	query:Query<(&mut PlayerMovement, &TeamMember), With<ActivePlayer>>,
+	query:Query<(&mut MovementControl, &ActiveControl)>,
 ){
 	if let Ok(team) = context.get(event.context){
-		for (mut movement, active_player_team) in query{
-			if team.0 == active_player_team.0{
+		for (mut movement, active_control) in query{
+			if active_control.team == team.0{
 				movement.kick = true;
 			}
 		}
@@ -82,11 +102,11 @@ fn kick_started(
 fn kick_finished(
 	event:On<Complete<Kick>>,
 	context:Query<&TeamInputController>,
-	query:Query<(&mut PlayerMovement, &TeamMember), With<ActivePlayer>>,
+	query:Query<(&mut MovementControl, &ActiveControl)>,
 ){
 	if let Ok(team) = context.get(event.context){
-		for (mut movement, active_player_team) in query{
-			if team.0 == active_player_team.0{
+		for (mut movement, active_control) in query{
+			if team.0 == active_control.team{
 				movement.kick = false;
 			}
 		}
