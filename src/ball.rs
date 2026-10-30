@@ -1,7 +1,7 @@
-use bevy::{camera::visibility::NoFrustumCulling, math::FloatPow, prelude::*};
+use bevy::{camera::visibility::NoFrustumCulling, math::FloatPow, prelude::*, time::Stopwatch};
 use std::f32::consts::PI;
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, constants::*, game_schedule::GameSchedule, game_state::GameState, helpers::*, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget, Velocity}, pitch::PitchConfiguration, player::{KickRecovery, Player}, shared::{PitchAreaMask, SoccerCollider}};
+use crate::{assets::AssetLoadState, constants::*, game_control::MovementControl, game_schedule::GameSchedule, game_state::GameState, helpers::*, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget, Velocity}, pitch::PitchConfiguration, player::{KickRecovery, Player}, shared::{PitchAreaMask, SoccerCollider}};
 
 const BALL_SCALE: f32 = 0.5;
 pub const BALL_RADIUS:f32 = 0.25 * BALL_SCALE;
@@ -40,7 +40,7 @@ impl Plugin for BallPlugin{
 				.load_collection::<BallAssets>(),
 			)
 			.add_systems(OnEnter(GameState::Playing), spawn_ball)
-			.add_systems(FixedUpdate, (dribble, physics).chain().in_set(GameSchedule::PreMovement))
+			.add_systems(FixedUpdate, (after_touch, dribble, physics).chain().in_set(GameSchedule::PreMovement))
 			.add_systems(FixedUpdate, (do_movement, do_rotation).chain().in_set(GameSchedule::Movement))
 
 
@@ -63,11 +63,10 @@ pub struct BallAssets {
 #[derive(Component, Debug)]
 pub struct Ball{
 	pub possession:Option<Entity>,
-	after_touch_time:Timer,
 }
 
-
-
+#[derive(Component)]
+pub struct AfterTouch(pub Timer);
 
 #[derive(Component, Debug)]
 pub struct Rotation{
@@ -96,7 +95,6 @@ fn spawn_ball(
 		Transform::from_translation(Vec3::new(-30., 10. ,0.)).with_scale(Vec3::splat(BALL_SCALE)),
 		Ball{
 			possession: None,
-			after_touch_time:Timer::from_seconds(0.5, TimerMode::Once),
 		},
 		SoccerCollider{ 
 			shape: ColliderShape::Sphere( SphereTarget{ radius: BALL_RADIUS }),
@@ -108,6 +106,7 @@ fn spawn_ball(
 		PhysicalRotation(Quat::IDENTITY),
 		Rotation { axis: Vec3::X, speed: 0. },
 		NoFrustumCulling,
+		MovementControl{ direction: Vec2::ZERO, kick:false, kick_timer:Stopwatch::new() },
 	));
 }
 
@@ -121,6 +120,26 @@ struct ControlCandidate{
 	velocity:Velocity,
 }
 
+
+fn after_touch(
+	mut commands:Commands,
+	ball:Single<(Entity, &mut Velocity, &mut AfterTouch, &MovementControl)>,
+	time:Res<Time<Fixed>>,
+){
+	let (entity, mut velocity, mut aftertouch, movement_control) = ball.into_inner();
+	if aftertouch.0.tick(time.delta()).is_finished(){
+		commands.entity(entity).remove::<AfterTouch>();
+	}
+	if movement_control.direction.length_squared() > EPSILON_TOLERANCE{
+		let ball_dir_2d = velocity.direction.xz().normalize_or_zero();
+		let lateral_deviation = ball_dir_2d.perp_dot(movement_control.direction);
+		let ball_right = Vec2{ x: ball_dir_2d.y, y: -ball_dir_2d.x };
+		let ball_force = ball_right * lateral_deviation * velocity.speed * 0.017;
+		let mut velocity_vec = velocity.to_vec3();
+		velocity_vec += Vec3{ x: -ball_force.x, y: 0., z: -ball_force.y };
+		*velocity = Velocity::from_vec3(velocity_vec).unwrap_or(Velocity::ZERO);
+	}
+}
 
 fn dribble(
 	ball:Single<(&mut Ball, &mut Velocity, &PhysicalTranslation)>,
@@ -146,11 +165,8 @@ fn dribble(
 				closest = Some(ControlCandidate { dist_squared, entity, to_control_point, velocity:*velocity });
 			}
 	}
-	if closest.is_none(){
-		return;
-	}
-	if let Some(candidate) = closest{
 
+	if let Some(candidate) = closest{
 		ball.possession = Some(candidate.entity);
 		let mut ball_vec = ball_velocity.to_vec3();
 		let vel_diff = candidate.velocity.to_vec3() - ball_vec;
@@ -160,10 +176,9 @@ fn dribble(
 		ball_vec += time.delta_secs() * combined_force;
 
 		//update ball velocity
-		ball_velocity.from_vec3(ball_vec);
+		*ball_velocity = Velocity::from_vec3(ball_vec).unwrap_or(Velocity::ZERO);
 		//candidate.to_control_point
 		gizmos.arrow(ball_translation.0, ball_translation.0 + vel_diff, bevy::color::palettes::css::BLUE);
-		
 	};
 }
 
@@ -198,7 +213,7 @@ fn physics(
 			velocity -= Vec3::ZERO.with_xz(damping_deceleration);
 		}
 	}
-	ball_velocity.from_vec3(velocity);
+	*ball_velocity = Velocity::from_vec3(velocity).unwrap_or(Velocity::ZERO);
 	if is_on_ground{
 		if ball_velocity.speed > EPSILON_TOLERANCE{
 			ball_rotation.axis = ball_velocity.direction.cross(Vec3::Y).normalize_or_zero();
@@ -318,7 +333,7 @@ fn do_movement(
 				
 			let next_ball_vel = ball_v - (1.0 + restitution) * approach_speed * normal_vec;
 			//info!("bounce! {}", restitution);
-			ball_velocity.from_vec3(next_ball_vel);
+			*ball_velocity = Velocity::from_vec3(next_ball_vel).unwrap_or(Velocity::ZERO);
 			ball_movement = ball_velocity.as_frame_motion(collision_point_shifted, 0., delta);
 		}
 		else{

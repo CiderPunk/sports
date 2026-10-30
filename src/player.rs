@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use std::{f32::consts::PI, time::Duration };
 use bevy::{gltf::GltfMesh, light::NotShadowCaster, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
-use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{Ball, MAX_INTERACTION_DISTANCE_SQUARED}, constants::*, game_control::MovementControl, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, match_state::{MatchState, PlayerSnapshot}, physics::{Collider, ColliderShape, CylinderTarget, EPSILON_TOLERANCE, Velocity}, shared::{PitchAreaMask, SoccerCollider}, team::{PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
+use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{AfterTouch, Ball, MAX_INTERACTION_DISTANCE_SQUARED}, constants::*, game_control::{ActiveControl, MovementControl}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, match_state::{MatchState, PlayerSnapshot}, physics::{Collider, ColliderShape, CylinderTarget, EPSILON_TOLERANCE, Velocity}, shared::{PitchAreaMask, SoccerCollider}, team::{PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_TURN_SPEED: f32 = 3.0;
@@ -36,12 +36,6 @@ impl Plugin for PlayerPlugin{
 #[require(TargetRotation)]
 pub struct Player{
 	kit:KitConfiguration,
-}
-
-
-#[derive(Component)]
-pub struct ActiveControl{
-	pub team:Entity,
 }
 
 #[derive(Component)]
@@ -275,7 +269,7 @@ impl MovementControl{
 }
  */
 fn update_active_marker_position(
-	active_player_query:Query<&GlobalTransform, With<ActiveControl>>,
+	active_player_query:Query<&GlobalTransform, (With<ActiveControl>, With<Player>)>,
 	marker:Single<(&mut Transform, &mut Visibility), With<ActiveMarker>>,
 	time:Res<Time>,
 ){
@@ -488,14 +482,14 @@ fn player_intent_event(
 	event:On<PlayerIntentEvent>,
 	mut commands:Commands,
 	player_query:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, &MovementControl, &TeamMember), Without<Ball>>,
-	ball:Single<(&PhysicalTranslation, &mut Velocity), With<Ball>>,
+	ball:Single<(Entity, &PhysicalTranslation, &mut Velocity), With<Ball>>,
 	match_state:Res<MatchState>,	
 	mut message_writer:MessageWriter<ActivePlayerSwitch>,
 ){
 	let Ok((player_translation, player_rotation, _player_velocity, player_movement, team)) = player_query.get(event.entity) else {
 		return; 
 	};
-	let (ball_translation, mut velocity) = ball.into_inner();
+	let (ball_entity, ball_translation, mut velocity) = ball.into_inner();
 	
 	let Some(to_control_point) = to_nearest_control_point(ball_translation.0, player_translation.0, player_rotation.0) else{
 		return;
@@ -566,6 +560,10 @@ fn player_intent_event(
 			//let shot_dir = Vec3::new(player_movement.direction.x, 0.2, player_movement.direction.y).normalize_or_zero();
 			velocity.direction = Dir3::new_unchecked(shoot);
 			velocity.speed = power* 60.0;
+			commands.entity(ball_entity).insert((
+				ActiveControl{ team:team.0 },
+				AfterTouch(Timer::from_seconds(0.5, TimerMode::Once))
+			));
 		},
 	}
 }

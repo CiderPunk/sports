@@ -1,7 +1,7 @@
 use bevy::{prelude::*, time::Stopwatch};
 use bevy_enhanced_input::prelude::*;
 
-use crate::{game_state::GameState, player::ActiveControl, team::{PlayerControlled, TeamMember}};
+use crate::{game_state::GameState, team::{PlayerControlled, TeamMember}};
 
 pub struct GameControlPlugin;
 
@@ -38,6 +38,15 @@ pub struct TeamInputControllers(Vec<Entity>);
 
 #[derive(Component)]
 pub struct GameControl;
+
+
+
+#[derive(Component)]
+pub struct ActiveControl{
+	pub team:Entity,
+}
+
+
 
 #[derive(Component, Debug, Default)]
 pub struct MovementControl{
@@ -79,11 +88,11 @@ fn direction_input_started(
 fn kick_started(
 	event:On<Fire<Kick>>,
 	context:Query<&TeamInputController>,
-	query:Query<(&mut MovementControl, &TeamMember), With<ActiveControl>>,
+	query:Query<(&mut MovementControl, &ActiveControl)>,
 ){
 	if let Ok(team) = context.get(event.context){
-		for (mut movement, active_player_team) in query{
-			if team.0 == active_player_team.0{
+		for (mut movement, active_control) in query{
+			if active_control.team == team.0{
 				movement.kick = true;
 			}
 		}
@@ -93,11 +102,11 @@ fn kick_started(
 fn kick_finished(
 	event:On<Complete<Kick>>,
 	context:Query<&TeamInputController>,
-	query:Query<(&mut MovementControl, &TeamMember), With<ActiveControl>>,
+	query:Query<(&mut MovementControl, &ActiveControl)>,
 ){
 	if let Ok(team) = context.get(event.context){
-		for (mut movement, active_player_team) in query{
-			if team.0 == active_player_team.0{
+		for (mut movement, active_control) in query{
+			if team.0 == active_control.team{
 				movement.kick = false;
 			}
 		}
