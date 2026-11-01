@@ -1,7 +1,7 @@
 use bevy::{camera::visibility::NoFrustumCulling, math::FloatPow, prelude::*, time::Stopwatch};
 use std::f32::consts::PI;
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, constants::*, game_control::MovementControl, game_schedule::GameSchedule, game_state::GameState, helpers::*, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget, Velocity}, pitch::PitchConfiguration, player::{KickRecovery, Player}, shared::{PitchAreaMask, SoccerCollider}};
+use crate::{assets::AssetLoadState, constants::*, game_control::{ActiveControl, MovementControl}, game_schedule::GameSchedule, game_state::GameState, helpers::*, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget, Velocity}, pitch::PitchConfiguration, player::{KickRecovery, Player}, shared::{PitchAreaMask, SoccerCollider}};
 
 const BALL_SCALE: f32 = 0.5;
 pub const BALL_RADIUS:f32 = 0.25 * BALL_SCALE;
@@ -236,12 +236,13 @@ fn do_rotation(
 }
 
 fn do_movement(
-	ball:Single<(&mut PhysicalTranslation, &mut Velocity, &Ball)>,
+	mut commands:Commands,
+	ball:Single<(Entity, &mut PhysicalTranslation, &mut Velocity, &Ball)>,
 	colliders:Query<(Entity, &SoccerCollider, &PhysicalTranslation, Option<&Velocity>, &Name), Without<Ball>>,
 	time:Res<Time<Fixed>>,
 	pitch_config:Res<PitchConfiguration>,
 ){
-	let (mut translation, mut ball_velocity, ball) = ball.into_inner();
+	let (ball_entity, mut translation, mut ball_velocity, ball) = ball.into_inner();
 	let ball_translation = translation.0;
 	let mut ball_movement =  ball_velocity.as_frame_motion(ball_translation, 0., time.delta_secs());
 	let mut time_offset = 0.;
@@ -340,6 +341,9 @@ fn do_movement(
 			translation.0 = ball_movement.final_position();
 			delta = 0.;
 		}
+	}
+	if collision_count > 0{
+		commands.entity(ball_entity).remove::<ActiveControl>();
 	}
 	ball_velocity.direction = ball_movement.direction;
 }
