@@ -336,11 +336,13 @@ fn plan_movement(
 			velocity.direction = Dir3::Y;
 			velocity.speed = 0.;
 		}	
-		match *state{
+		match &mut *state{
 			ActionState::None => {
-			
+				if movement.kick{
+					*state = ActionState::KickWindup(Stopwatch::new());
+				}
 			},
-			ActionState::KickWindup(mut stopwatch) => {
+			ActionState::KickWindup( stopwatch) => {
 				stopwatch.tick(time.delta());
 				//plan_normal_movement();
 				//unleash the kick?
