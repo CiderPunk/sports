@@ -259,7 +259,7 @@ fn init_player_skin(
 			commands.entity(mesh_entity).insert(MeshMaterial3d(material_handle));
 			break;
 		}
-	}
+  }
 }
 
 fn init_player_animations(
@@ -317,14 +317,15 @@ fn animate_player(
 
 fn plan_movement(
 	mut commands:Commands,
-	query:Query<(Entity, &mut MovementControl, &mut TargetRotation, &mut Velocity, &mut PhysicalRotation), With<Player>>,
+	query:Query<(Entity, &mut ActionState, &mut MovementControl, &mut TargetRotation, &mut Velocity, &mut PhysicalRotation), With<Player>>,
 	time:Res<Time<Fixed>>,
 ){
 	let delta = time.delta_secs();
 
-	for (entity, mut movement, mut target_rotation, mut velocity, mut rotation) in query{
+	for (entity, mut state,  mut movement, mut target_rotation, mut velocity, mut rotation) in query{
+
 		rotation.0 = rotation.0.rotate_towards(target_rotation.0, delta * PLAYER_TURN_SPEED * PI);
-  	let movement_3d = Vec3::new(movement.direction.x, 0.0, movement.direction.y);
+		let movement_3d = Vec3::new(movement.direction.x, 0.0, movement.direction.y);
 
 		if let Ok((dir, length)) =  Dir3::new_and_length(movement_3d){
 			target_rotation.0 = Quat::from_rotation_arc(Vec3::Z, dir.xyz());
@@ -335,25 +336,22 @@ fn plan_movement(
 			velocity.direction = Dir3::Y;
 			velocity.speed = 0.;
 		}	
+		match *state{
+			ActionState::None => {
+			
+			},
+			ActionState::KickWindup(mut stopwatch) => {
+				stopwatch.tick(time.delta());
+				//plan_normal_movement();
+				//unleash the kick?
+				if !movement.kick{
+					commands.trigger(PlayerIntentEvent{ entity, intent: PlayerIntent::Shoot((stopwatch.elapsed_secs() / MAX_POWER_HOLD).min(1.0)) });
+				}
 
-		if movement.kick{
-			movement.kick_timer.tick(time.delta());
-		}
-		else{
-			let kick_time = movement.kick_timer.elapsed_secs();
-			if kick_time > 0.2{
-				//do a kick!
-				info!("Kick! {}",kick_time);
-				//power is how long the button was help
-				commands.trigger(PlayerIntentEvent{ entity, intent: PlayerIntent::Shoot((kick_time / MAX_POWER_HOLD).min(1.0)) });
-				movement.kick_timer.reset();
-			}
-			else if kick_time > 0.{
-				//do a pass!
-				info!("pass! {}",kick_time);
-				commands.trigger(PlayerIntentEvent{ entity, intent: PlayerIntent::Pass });
-				movement.kick_timer.reset();
-			}
+			},
+			ActionState::KickRecover(timer) => todo!(),
+			ActionState::Slide(timer) => todo!(),
+			ActionState::SlideRecover(timer) => todo!(),
 		}
 	}
 }
