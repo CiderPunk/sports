@@ -34,6 +34,7 @@ impl Plugin for PlayerPlugin{
 #[derive(Component,Debug)]
 #[require(MovementControl)]
 #[require(TargetRotation)]
+#[require(ActionState)]
 pub struct Player{
 	kit:KitConfiguration,
 }
@@ -67,6 +68,17 @@ impl Default for TargetRotation{
 	fn default() -> Self {
 		Self(Quat::from_axis_angle(Vec3::Y,0.))
 	}
+}
+
+
+#[derive(Component, Default)]
+enum ActionState {
+  #[default]
+	None,
+	KickWindup(Stopwatch),
+	KickRecover(Timer),
+	Slide(Timer),
+	SlideRecover(Timer),
 }
 
 
@@ -528,7 +540,7 @@ fn player_intent_event(
 				if diff.length_squared() > MAX_PASS_DISTANCE * MAX_PASS_DISTANCE{ continue; }
 				let angle = diff.angle_between(forward).abs();
 				if angle < MAX_PASS_DEFLECTION {
-					let distance_angle = (0.1 + angle) * diff.length();
+					let distance_angle = (0.2 + angle) * diff.length();
 					if best_distance_angle < Some(distance_angle){
 						best_distance_angle = Some(distance_angle);
 						best_pass_candidate = Some(*candidate);
@@ -550,6 +562,10 @@ fn player_intent_event(
 				velocity.direction = Dir3::new_unchecked(shoot_dir);
 				velocity.speed = PASS_SPEED;
 				info!("Pass no target");
+				commands.entity(ball_entity).insert((
+					ActiveControl{ team:team.0 },
+					AfterTouch(Timer::from_seconds(0.5, TimerMode::Once))
+				));
 			}
 			
 		},

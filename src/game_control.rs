@@ -27,7 +27,7 @@ struct MovementInput;
 struct Kick;
 
 
-#[derive(Component)]
+#[derive(Component, Clone)]
 #[relationship(relationship_target = TeamInputControllers)]
 pub struct TeamInputController(pub Entity);
 
@@ -36,7 +36,7 @@ pub struct TeamInputController(pub Entity);
 pub struct TeamInputControllers(Vec<Entity>);
 
 
-#[derive(Component)]
+#[derive(Component, Default, Clone, Copy)]
 pub struct GameControl;
 
 
@@ -126,19 +126,27 @@ fn spawn_controls(
 	};
 
 	info!("GameControl spawned");
-	commands.spawn((
-		GameControl,
-		TeamInputController(team_entity),
-		actions!(GameControl[
-			(
-				Action::<MovementInput>::new(),
-				DeadZone::default(),
-				Bindings::spawn((Cardinal::wasd_keys(), Axial::left_stick(), Cardinal::dpad())),
-			),
-			(
-				Action::<Kick>::new(),
-				bindings![ KeyCode::Space, GamepadButton::South],
-			)
-		]),
-	));
+
+	let control_entity = commands.spawn_scene(bsn!{
+		GameControl
+		Actions<GameControl>[
+			Action::<MovementInput>::new()
+			DeadZone::default()
+			Bindings[
+				{preset::cardinal::wasd_keys()}
+				-- 
+				{preset::cardinal::dpad()}
+				--
+				{preset::axial::left_stick()}				
+			]
+			-- 
+			Action::<Kick>::new()
+			Bindings[ 
+				Binding(KeyCode::Space)
+				--
+				Binding(GamepadButton::South)
+			]
+		]
+	}).id();
+	commands.entity(control_entity).insert(TeamInputController(team_entity));
 }
