@@ -11,6 +11,7 @@ const PLAYER_RESTITUTION:f32 = 0.6;
 pub const PLAYER_HEIGHT:f32 = 1.8;
 //maximum button hold time for max power
 const MAX_POWER_HOLD:f32 = 0.5;
+const KICK_RECOVERY_TIME:f32 = 0.3;
 
 pub struct PlayerPlugin;
 
@@ -348,10 +349,16 @@ fn plan_movement(
 				//unleash the kick?
 				if !movement.kick{
 					commands.trigger(PlayerIntentEvent{ entity, intent: PlayerIntent::Shoot((stopwatch.elapsed_secs() / MAX_POWER_HOLD).min(1.0)) });
+					*state = ActionState::KickRecover(Timer::from_seconds(KICK_RECOVERY_TIME, TimerMode::Once));
 				}
 
 			},
-			ActionState::KickRecover(timer) => todo!(),
+			ActionState::KickRecover(timer) =>{
+				timer.tick(time.delta());
+				if timer.is_finished(){
+					*state = ActionState::None;
+				}
+			},
 			ActionState::Slide(timer) => todo!(),
 			ActionState::SlideRecover(timer) => todo!(),
 		}
