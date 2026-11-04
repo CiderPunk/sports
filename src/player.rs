@@ -12,6 +12,11 @@ pub const PLAYER_HEIGHT:f32 = 1.8;
 //maximum button hold time for max power
 const MAX_POWER_HOLD:f32 = 0.5;
 const KICK_RECOVERY_TIME:f32 = 0.3;
+const PASS_THRESHOLD:f32 = 0.2;
+const SLIDE_TIME:f32 = 0.5;
+const MAX_PASS_DISTANCE:f32 = 30.;
+const MAX_PASS_DEFLECTION:f32 = PI * 0.125;
+const PASS_SPEED:f32 = 20.;
 
 pub struct PlayerPlugin;
 
@@ -26,7 +31,7 @@ impl Plugin for PlayerPlugin{
 			.add_systems(OnEnter(GameState::Initialize), (init_markers, init_player, spawn_players).chain())
 			.add_systems(Update, (update_active_marker_position, animate_player))
 			.add_systems(FixedUpdate,  plan_movement.in_set(GameSchedule::PreMovement))
-			.add_systems(FixedUpdate, (switch_active_player, update_recovery, player_think, do_movement).in_set(GameSchedule::Movement))
+			.add_systems(FixedUpdate, (switch_active_player, player_think, do_movement).in_set(GameSchedule::Movement))
 			.add_systems(Update, (check_active_player).run_if(on_timer(Duration::from_secs_f32(0.2))))
 			;
 	}
@@ -35,7 +40,7 @@ impl Plugin for PlayerPlugin{
 #[derive(Component,Debug)]
 #[require(MovementControl)]
 #[require(TargetRotation)]
-#[require(ActionState)]
+#[require(PlayerState)]
 pub struct Player{
 	kit:KitConfiguration,
 }
@@ -72,22 +77,14 @@ impl Default for TargetRotation{
 }
 
 
-#[derive(Component, Default)]
-enum ActionState {
+#[derive(Component, Default, PartialEq, Eq)]
+pub enum PlayerState {
   #[default]
 	None,
 	KickWindup(Stopwatch),
 	KickRecover(Timer),
 	Slide(Timer),
 	SlideRecover(Timer),
-}
-
-
-
-#[derive(Component)]
-#[component(storage = "SparseSet")]
-pub struct KickRecovery{
-	timer:Timer,
 }
 
 
@@ -129,16 +126,21 @@ fn init_markers(
 	Ok(())
 }
 
-fn update_recovery(
-	mut commands:Commands,
-	query:Query<(Entity, &mut KickRecovery)>,
-	time:Res<Time<Fixed>>,
-){
-	for (entity, mut recovery) in query{
-		recovery.timer.tick(time.delta());
-		if recovery.timer.is_finished(){
-			commands.entity(entity).remove::<KickRecovery>();
-		}
+
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlayerAnim{
+	Idle = 0,
+	Run = 1,
+	Sprint = 2,
+	Slide = 3,
+	SlideDown = 4,
+	SlideUp = 5,
+}
+
+impl From<PlayerAnim> for usize {
+	fn from(anim: PlayerAnim) -> Self {
+		anim as usize
 	}
 }
 
@@ -148,7 +150,7 @@ fn init_player(
 	player_assets: Res<PlayerAssets>,
 ){
 	info!("Initialize player animations");
-	anim_manager.create_graph(player_assets.player_gltf.clone(), &["idle", "run", "sprint"]);
+	anim_manager.create_graph(player_assets.player_gltf.clone(), &["idle", "run", "sprint", "slide", "slide-down", "slide-up"]);
 }
 
 fn spawn_players(
@@ -211,6 +213,7 @@ fn spawn_players(
 				Position(POSITIONS[i]),
 				TeamMember(team_entity),
 				Thinker,
+				PlayerState::None,
 			))
 			.observe(init_player_animations)
 			.observe(init_player_skin)
@@ -267,7 +270,7 @@ fn init_player_animations(
 	event:On<WorldInstanceReady>,
 	mut anim_manager:AnimationManager<Player>,
 ){
-	anim_manager.attach_animation(event.entity, 0);
+	anim_manager.attach_animation(event.entity, PlayerAnim::Idle.into());
 }
 
 
@@ -299,18 +302,19 @@ fn update_active_marker_position(
 	}
 }
 
+
+
 fn animate_player(
-	query:Query<(&MovementControl, Entity), With<Player>>,
+	query:Query<(&PlayerState, &Velocity, Entity), With<Player>>,
 	//mut animator_query:Query<(&mut AnimationPlayer, &mut AnimationTransitions)>,
 	mut animation_manager:AnimationManager<Player>,
 ){
-	for (movement, entity) in query{
-		//let Ok((mut player, mut transition)) = animator_query.get_mut(animator.entity) else { continue; };
-		if movement.direction == Vec2::ZERO{
-			animation_manager.set_animation(entity, 0, 0.2, 1.0, true);
+	for (state, velocity, entity) in query{
+		if velocity.speed < EPSILON_TOLERANCE{
+			animation_manager.set_animation(entity, PlayerAnim::Idle.into(), 0.2, 1.0, true);
 		}
 		else{
-			animation_manager.set_animation(entity, 2, 0.2, movement.direction.length().clamp(0.1,1.0), true);
+			animation_manager.set_animation(entity, PlayerAnim::Sprint.into(), 0.2, (velocity.speed / PLAYER_SPEED) .clamp(0.1,1.0), true);
 		}
 	}
 }
@@ -318,16 +322,14 @@ fn animate_player(
 
 fn plan_movement(
 	mut commands:Commands,
-	query:Query<(Entity, &mut ActionState, &mut MovementControl, &mut TargetRotation, &mut Velocity, &mut PhysicalRotation), With<Player>>,
+	query:Query<(Entity, &mut PlayerState, &mut MovementControl, &mut TargetRotation, &mut Velocity, &PhysicalTranslation), With<Player>>,
+	ball:Single<&PhysicalTranslation, With<Ball>>,
 	time:Res<Time<Fixed>>,
 ){
-	let delta = time.delta_secs();
 
-	for (entity, mut state,  mut movement, mut target_rotation, mut velocity, mut rotation) in query{
-
-		rotation.0 = rotation.0.rotate_towards(target_rotation.0, delta * PLAYER_TURN_SPEED * PI);
+	for (entity, mut state,  movement, mut target_rotation, mut velocity, translation) in query{
+		//rotation.0 = rotation.0.rotate_towards(target_rotation.0, delta_secs * PLAYER_TURN_SPEED * PI);
 		let movement_3d = Vec3::new(movement.direction.x, 0.0, movement.direction.y);
-
 		if let Ok((dir, length)) =  Dir3::new_and_length(movement_3d){
 			target_rotation.0 = Quat::from_rotation_arc(Vec3::Z, dir.xyz());
 			velocity.speed = length * PLAYER_SPEED;
@@ -338,41 +340,55 @@ fn plan_movement(
 			velocity.speed = 0.;
 		}	
 		match &mut *state{
-			ActionState::None => {
-				if movement.kick{
-					*state = ActionState::KickWindup(Stopwatch::new());
+			PlayerState::None => {
+				if movement.kick{	
+					if ball.0.distance_squared(translation.0) >4.{
+						commands.trigger(PlayerContextEvent{ entity });
+						*state = PlayerState::Slide(Timer::from_seconds(SLIDE_TIME, TimerMode::Once))
+					}
+					else{
+						*state = PlayerState::KickWindup(Stopwatch::new());
+					}
 				}
 			},
-			ActionState::KickWindup( stopwatch) => {
+			PlayerState::KickWindup( stopwatch) => {
 				stopwatch.tick(time.delta());
 				//plan_normal_movement();
 				//unleash the kick?
 				if !movement.kick{
-					commands.trigger(PlayerIntentEvent{ entity, intent: PlayerIntent::Shoot((stopwatch.elapsed_secs() / MAX_POWER_HOLD).min(1.0)) });
-					*state = ActionState::KickRecover(Timer::from_seconds(KICK_RECOVERY_TIME, TimerMode::Once));
-				}
+					let kick_time = stopwatch.elapsed_secs();
+					*state = PlayerState::KickRecover(Timer::from_seconds(KICK_RECOVERY_TIME, TimerMode::Once));
 
+					if kick_time > PASS_THRESHOLD{
+						commands.trigger(PlayerIntentEvent{ entity, intent: PlayerIntent::Shoot((kick_time / MAX_POWER_HOLD).min(1.0)) });
+					}
+					else{
+						commands.trigger(PlayerIntentEvent{ entity, intent: PlayerIntent::Pass });
+					}
+					
+				}
 			},
-			ActionState::KickRecover(timer) =>{
+			PlayerState::KickRecover(timer) =>{
 				timer.tick(time.delta());
 				if timer.is_finished(){
-					*state = ActionState::None;
+					*state = PlayerState::None;
 				}
 			},
-			ActionState::Slide(timer) => todo!(),
-			ActionState::SlideRecover(timer) => todo!(),
+			PlayerState::Slide(timer) => todo!(),
+			PlayerState::SlideRecover(timer) => todo!(),
 		}
 	}
 }
 
 fn do_movement(
-	query:Query<(&Velocity, &mut PhysicalTranslation), With<Player>>,
+	query:Query<(&Velocity, &mut PhysicalTranslation, &mut PhysicalRotation, &TargetRotation), With<Player>>,
 		time:Res<Time<Fixed>>,
 ){
-	let delta = time.delta_secs();
-	for (velocity, mut translation) in query{
+	let delta_secs = time.delta_secs();
+	for (velocity, mut translation, mut rotation, target_rotation) in query{
+		rotation.0 = rotation.0.rotate_towards(target_rotation.0, delta_secs * PLAYER_TURN_SPEED * PI);
 		//TODO: Collision detection!
-		translation.0 += velocity.direction * velocity.speed * delta;
+		translation.0 += velocity.direction * velocity.speed * delta_secs;
 	}
 }
 
@@ -491,10 +507,7 @@ fn player_think(
 }
 
 
-const MAX_PASS_DISTANCE:f32 = 30.;
-const MAX_PASS_DEFLECTION:f32 = PI * 0.125;
-const PASS_ANGLE_FACTOR:f32 = 2.0;
-const PASS_SPEED:f32 = 20.;
+
 
 
 fn player_intent_event(
@@ -518,15 +531,12 @@ fn player_intent_event(
 		return;
 	}
 
-
 	let shoot_dir = if player_movement.direction.length_squared() < EPSILON_TOLERANCE{
 		player_rotation.0 * Vec3::Z
 	}
 	else{
 		Vec3::new(player_movement.direction.x, 0., player_movement.direction.y).normalize_or_zero()
 	};
-
-	commands.entity(event.entity).insert(KickRecovery{ timer:Timer::from_seconds(0.2, TimerMode::Once) });
 
 	match event.intent{
 		PlayerIntent::Pass => { 
@@ -548,7 +558,7 @@ fn player_intent_event(
 				let angle = diff.angle_between(forward).abs();
 				if angle < MAX_PASS_DEFLECTION {
 					let distance_angle = (0.2 + angle) * diff.length();
-					if best_distance_angle < Some(distance_angle){
+					if best_distance_angle.is_none() || best_distance_angle > Some(distance_angle){
 						best_distance_angle = Some(distance_angle);
 						best_pass_candidate = Some(*candidate);
 					}

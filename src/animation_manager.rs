@@ -22,22 +22,6 @@ impl Animator{
 }
 
 
-/*
-fn restart_visible_animations(
- 	mut query: Query<(&mut AnimationTransitions, &mut AnimationPlayer, &ViewVisibility), Changed<ViewVisibility>>,
-){
-	for (transitions, mut player, view_visibility) in query.iter_mut(){
-
-		if view_visibility.get() 
-			&& let Some(anim) =  transitions.get_main_animation() 
-			&& let Some(active_animation) = player.animation_mut(anim){
-				
-				info!("Restarting animation");
-				active_animation.resume();
-		}
-	}
-}
- */
 #[derive(Resource)]
 pub struct MeshAnimations<T: Component> {
 	pub animations: Vec<AnimationNodeIndex>,
@@ -76,9 +60,15 @@ impl<'w, 's, T:Component +'static> AnimationManager<'w, 's, T> {
 				.unwrap_or_else(|| panic!("Animation clip {} missing in GLTF", name))
 		});
 
-		let (graph, node_indices) = AnimationGraph::from_clips(clips);
-		let graph_handle = self.graphs.add(graph);
+    let clip_count = clips.len();
+    let (graph, node_indices) = AnimationGraph::from_clips(clips);
+    
+    // CRITICAL DEBUG LOGS:
+    info!("Requested clips: {}, Created nodes: {}", clip_count, node_indices.len());
+    info!("Node indices map: {:?}", node_indices);
 
+		let graph_handle = self.graphs.add(graph);
+//info!("node indicies: {:?}", node_indices);
 		self.commands.insert_resource(MeshAnimations::<T> {
 			animations: node_indices,
 			graph_handle,
