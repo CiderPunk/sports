@@ -1,7 +1,7 @@
 use bevy::{camera::visibility::NoFrustumCulling, math::FloatPow, prelude::*, time::Stopwatch};
 use std::f32::consts::PI;
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, constants::*, game_control::{ActiveControl, MovementControl}, game_schedule::GameSchedule, game_state::GameState, helpers::*, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget, Velocity}, pitch::PitchConfiguration, player::{KickRecovery, Player}, shared::{PitchAreaMask, SoccerCollider}};
+use crate::{assets::AssetLoadState, constants::*, game_control::{ActiveControl, MovementControl}, game_schedule::GameSchedule, game_state::GameState, helpers::*, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget, Velocity}, pitch::PitchConfiguration, player::{Player, PlayerState}, shared::{PitchAreaMask, SoccerCollider}};
 
 const BALL_SCALE: f32 = 0.5;
 pub const BALL_RADIUS:f32 = 0.25 * BALL_SCALE;
@@ -28,8 +28,8 @@ pub const MAX_DRIBBLE_HEIGHT:f32 = 1.;
 pub const MAX_INTERACTION_DISTANCE:f32 = 2.;
 pub const MAX_INTERACTION_DISTANCE_SQUARED:f32 = MAX_INTERACTION_DISTANCE * MAX_INTERACTION_DISTANCE;
 
-pub const SPEED_MATCH_FACTOR:f32 = 14.0;
-pub const DISTANCE_MATCH_FACTPR:f32 = 120.0;
+pub const SPEED_MATCH_FACTOR:f32 = 16.0;
+pub const DISTANCE_MATCH_FACTPR:f32 = 150.0;
 
 pub struct BallPlugin;
 impl Plugin for BallPlugin{
@@ -143,7 +143,7 @@ fn after_touch(
 
 fn dribble(
 	ball:Single<(&mut Ball, &mut Velocity, &PhysicalTranslation)>,
-	players:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, Entity), (With<Player>, Without<Ball>, Without<KickRecovery>)>,
+	players:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, Entity, &PlayerState), (With<Player>, Without<Ball>)>,
 	mut gizmos: Gizmos,
 	time:Res<Time<Fixed>>,
 ){
@@ -152,7 +152,15 @@ fn dribble(
 	let mut closest:Option<ControlCandidate> = None;
 	
 	//find who controls the ball...
-	for (translation, rotation, velocity, entity) in players{
+	for (translation, rotation, velocity, entity, state) in players{
+		
+		match state{
+				PlayerState::None => (),
+				PlayerState::KickWindup(_) => (),
+				PlayerState::KickRecover(_) => continue,
+				PlayerState::Slide(_) => continue,
+				PlayerState::SlideRecover(_) => continue,
+		};
 
 		let Some(to_control_point) = to_nearest_control_point(ball_translation.0, translation.0, rotation.0) else{
 			continue;
