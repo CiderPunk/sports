@@ -5,6 +5,7 @@ use bevy_asset_loader::prelude::*;
 use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{AfterTouch, Ball, MAX_INTERACTION_DISTANCE_SQUARED}, constants::*, game_control::{ActiveControl, MovementControl}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, match_state::{MatchState, PlayerSnapshot}, physics::{Collider, ColliderShape, CylinderTarget, EPSILON_TOLERANCE, Velocity}, shared::{PitchAreaMask, SoccerCollider}, team::{PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
 
 const PLAYER_SPEED: f32 = 10.;
+const PLAYER_SLIDE_SPEED: f32 = 15.;
 const PLAYER_TURN_SPEED: f32 = 3.0;
 const PLAYER_COLLISION_RADIUS:f32 = 0.5;
 const PLAYER_RESTITUTION:f32 = 0.6;
@@ -28,9 +29,11 @@ impl Plugin for PlayerPlugin{
 				.load_collection::<PlayerAssets>(),
 			)
 			.add_message::<ActivePlayerSwitch>()
+			.add_message::<KickMessage>()
+			.add_message::<SlideMessage>()
 			.add_systems(OnEnter(GameState::Initialize), (init_markers, init_player, spawn_players).chain())
 			.add_systems(Update, (update_active_marker_position, animate_player))
-			.add_systems(FixedUpdate,  plan_movement.in_set(GameSchedule::PreMovement))
+			.add_systems(FixedUpdate,  (plan_movement, (kick_event_handler, slide_event_handler) ).chain().in_set(GameSchedule::PreMovement))
 			.add_systems(FixedUpdate, (switch_active_player, player_think, do_movement).in_set(GameSchedule::Movement))
 			.add_systems(Update, (check_active_player).run_if(on_timer(Duration::from_secs_f32(0.2))))
 			;
@@ -50,7 +53,6 @@ pub struct Position(Vec2);
 
 #[derive(Component)]
 pub struct ActiveMarker;
-
 
 #[derive(Component)]
 pub struct GoalKeeper;
@@ -75,6 +77,22 @@ impl Default for TargetRotation{
 		Self(Quat::from_axis_angle(Vec3::Y,0.))
 	}
 }
+
+#[derive(Message)]
+pub struct ActivePlayerSwitch(Entity);
+
+#[derive(Message)]
+pub struct KickMessage{
+	entity:Entity,
+	kick_time:f32,
+}
+
+#[derive(Message)]
+pub struct SlideMessage{
+	entity:Entity,
+	start:bool,
+}
+
 
 
 #[derive(Component, Default, PartialEq, Eq)]
@@ -217,9 +235,6 @@ fn spawn_players(
 			))
 			.observe(init_player_animations)
 			.observe(init_player_skin)
-			.observe(player_intent_event)
-			.observe(player_context_event)
-			
 			.id();
 
 
@@ -274,16 +289,6 @@ fn init_player_animations(
 }
 
 
-
-
-/*
-impl MovementControl{
-	pub fn velocity(&self)->Vec3{
-		let vel_2d = self.direction * PLAYER_SPEED;
-		Vec3::new(vel_2d.x, 0.0, vel_2d.y)
-	}
-}
- */
 fn update_active_marker_position(
 	active_player_query:Query<&GlobalTransform, (With<ActiveControl>, With<Player>)>,
 	marker:Single<(&mut Transform, &mut Visibility), With<ActiveMarker>>,
@@ -302,14 +307,20 @@ fn update_active_marker_position(
 	}
 }
 
-
-
 fn animate_player(
 	query:Query<(&PlayerState, &Velocity, Entity), With<Player>>,
 	//mut animator_query:Query<(&mut AnimationPlayer, &mut AnimationTransitions)>,
 	mut animation_manager:AnimationManager<Player>,
 ){
 	for (state, velocity, entity) in query{
+		match state {
+			PlayerState::None => (),
+			PlayerState::KickWindup(_) => (),
+			PlayerState::KickRecover(_) => (),
+			PlayerState::Slide(_) => continue,
+			PlayerState::SlideRecover(_) => continue,
+		};
+
 		if velocity.speed < EPSILON_TOLERANCE{
 			animation_manager.set_animation(entity, PlayerAnim::Idle.into(), 0.2, 1.0, true);
 		}
@@ -321,14 +332,60 @@ fn animate_player(
 
 
 fn plan_movement(
-	mut commands:Commands,
 	query:Query<(Entity, &mut PlayerState, &mut MovementControl, &mut TargetRotation, &mut Velocity, &PhysicalTranslation), With<Player>>,
 	ball:Single<&PhysicalTranslation, With<Ball>>,
 	time:Res<Time<Fixed>>,
+	mut kick_message_writer:MessageWriter<KickMessage>,
+	mut slide_message_writer:MessageWriter<SlideMessage>,
 ){
 
 	for (entity, mut state,  movement, mut target_rotation, mut velocity, translation) in query{
-		//rotation.0 = rotation.0.rotate_towards(target_rotation.0, delta_secs * PLAYER_TURN_SPEED * PI);
+	
+		match &mut *state{
+			PlayerState::None => {
+				if movement.kick{	
+					if ball.0.distance_squared(translation.0) >4.{
+						slide_message_writer.write(SlideMessage { entity, start:true });
+						*state = PlayerState::Slide(Timer::from_seconds(SLIDE_TIME, TimerMode::Once))
+					}
+					else{
+						*state = PlayerState::KickWindup(Stopwatch::new());
+					}
+				}
+			},
+			PlayerState::KickWindup( stopwatch) => {
+				stopwatch.tick(time.delta());
+				//unleash the kick?
+				if !movement.kick{
+					let kick_time = stopwatch.elapsed_secs();
+					*state = PlayerState::KickRecover(Timer::from_seconds(KICK_RECOVERY_TIME, TimerMode::Once));
+					kick_message_writer.write(KickMessage{ entity, kick_time });					
+				}
+			},
+			PlayerState::KickRecover(timer) =>{
+				timer.tick(time.delta());
+				if timer.is_finished(){
+					*state = PlayerState::None;
+				}
+			},
+			PlayerState::Slide(timer) => {
+				timer.tick(time.delta());
+				if timer.is_finished(){
+					*state = PlayerState::SlideRecover(Timer::from_seconds(0.5, TimerMode::Once));
+				}
+				continue;
+			},
+			PlayerState::SlideRecover(timer) => {
+				slide_message_writer.write(SlideMessage { entity, start:false });
+				timer.tick(time.delta());
+				if timer.is_finished(){
+					*state = PlayerState::None;
+				}
+				continue;
+			},
+		}
+
+	//rotation.0 = rotation.0.rotate_towards(target_rotation.0, delta_secs * PLAYER_TURN_SPEED * PI);
 		let movement_3d = Vec3::new(movement.direction.x, 0.0, movement.direction.y);
 		if let Ok((dir, length)) =  Dir3::new_and_length(movement_3d){
 			target_rotation.0 = Quat::from_rotation_arc(Vec3::Z, dir.xyz());
@@ -339,44 +396,8 @@ fn plan_movement(
 			velocity.direction = Dir3::Y;
 			velocity.speed = 0.;
 		}	
-		match &mut *state{
-			PlayerState::None => {
-				if movement.kick{	
-					if ball.0.distance_squared(translation.0) >4.{
-						commands.trigger(PlayerContextEvent{ entity });
-						*state = PlayerState::Slide(Timer::from_seconds(SLIDE_TIME, TimerMode::Once))
-					}
-					else{
-						*state = PlayerState::KickWindup(Stopwatch::new());
-					}
-				}
-			},
-			PlayerState::KickWindup( stopwatch) => {
-				stopwatch.tick(time.delta());
-				//plan_normal_movement();
-				//unleash the kick?
-				if !movement.kick{
-					let kick_time = stopwatch.elapsed_secs();
-					*state = PlayerState::KickRecover(Timer::from_seconds(KICK_RECOVERY_TIME, TimerMode::Once));
 
-					if kick_time > PASS_THRESHOLD{
-						commands.trigger(PlayerIntentEvent{ entity, intent: PlayerIntent::Shoot((kick_time / MAX_POWER_HOLD).min(1.0)) });
-					}
-					else{
-						commands.trigger(PlayerIntentEvent{ entity, intent: PlayerIntent::Pass });
-					}
-					
-				}
-			},
-			PlayerState::KickRecover(timer) =>{
-				timer.tick(time.delta());
-				if timer.is_finished(){
-					*state = PlayerState::None;
-				}
-			},
-			PlayerState::Slide(timer) => todo!(),
-			PlayerState::SlideRecover(timer) => todo!(),
-		}
+
 	}
 }
 
@@ -427,17 +448,13 @@ fn check_active_player(
 			}
 		}
 		if transition && closest_entity != active_player
-
 			&& let Some(new_active) = closest_entity{
-
 				message_writer.write(ActivePlayerSwitch(new_active));
 			}
 	}
 }
 
 
-#[derive(Message)]
-pub struct ActivePlayerSwitch(Entity);
 
 fn switch_active_player(
 	mut message_reader:MessageReader<ActivePlayerSwitch>,
@@ -465,7 +482,7 @@ const POSITION_DISTANCE_VARIANCE:f32 = 2.5;
 const POSITION_REDUCED_SPEED_DISTANCE:f32 = 5.0;
 const POSITION_REDUCED_SPEED_FACTOR:f32 = 0.6;
 
-
+//AI player think
 fn player_think(
 	match_state:Res<MatchState>,
 	players:Query<(&PhysicalTranslation, &TeamMember, &Position, &mut MovementControl, &mut TargetRotation), (With<Player>, With<ThinkNext>, Without<ActiveControl>)>,
@@ -501,61 +518,96 @@ fn player_think(
 			let diff = match_state.ball_location.with_y(0.) - translation.0.with_y(0.);
 			target_rotation.0 = Quat::from_rotation_arc(Vec3::Z, diff.normalize_or_zero());
 		}
-
-
 	}
 }
 
 
-
-
-
-fn player_intent_event(
-	event:On<PlayerIntentEvent>,
+fn slide_event_handler(
 	mut commands:Commands,
-	player_query:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, &MovementControl, &TeamMember), Without<Ball>>,
+	mut slide_message_reader:MessageReader<SlideMessage>,
+	mut player_query:Query<(&TargetRotation, &mut Velocity), Without<Ball>>,
+	mut animation_manager:AnimationManager<Player>,
+){
+	for message in slide_message_reader.read(){
+
+		let Ok((target_rotation, mut velocity)) = player_query.get_mut(message.entity) else{
+			continue;
+		};
+
+		match message.start{
+			true=>{ 
+				velocity.direction = Dir3::new_unchecked(target_rotation.0 * Vec3::Z);
+				velocity.speed = PLAYER_SLIDE_SPEED;
+				animation_manager.set_animation(message.entity, PlayerAnim::Slide.into(), 0.2, 1.0, false);
+			},
+			false=>{ 
+				velocity.speed = 0.0;
+				animation_manager.set_animation(message.entity, PlayerAnim::SlideUp.into(), 0.2, 1.0, false);
+			},
+		}
+	}
+}
+
+fn kick_event_handler(
+	mut commands:Commands,
+	mut kick_message_reader:MessageReader<KickMessage>,
+	mut active_player_message_writer:MessageWriter<ActivePlayerSwitch>,
+	player_query:Query<(&PhysicalTranslation, &PhysicalRotation, &TargetRotation, &TeamMember), Without<Ball>>,
 	ball:Single<(Entity, &PhysicalTranslation, &mut Velocity), With<Ball>>,
 	match_state:Res<MatchState>,	
-	mut message_writer:MessageWriter<ActivePlayerSwitch>,
 ){
-	let Ok((player_translation, player_rotation, _player_velocity, player_movement, team)) = player_query.get(event.entity) else {
-		return; 
-	};
+	if kick_message_reader.is_empty(){
+		return;
+	}
+
 	let (ball_entity, ball_translation, mut velocity) = ball.into_inner();
+	for message in kick_message_reader.read(){
+		let Ok((player_translation, player_rotation, target_rotation, team)) = player_query.get(message.entity) else {
+			continue; 
+		};
+		let Some(to_control_point) = to_nearest_control_point(ball_translation.0, player_translation.0, player_rotation.0) else{
+			continue;
+		};
 	
-	let Some(to_control_point) = to_nearest_control_point(ball_translation.0, player_translation.0, player_rotation.0) else{
-		return;
-	};
-	//cant kick when ball beyond control distance
-	if to_control_point.length_squared() > PLAYER_MAX_CONTROL_DISTANCE * PLAYER_MAX_CONTROL_DISTANCE{
-		return;
-	}
+		//cant kick when ball beyond control distance
+		if to_control_point.length_squared() > PLAYER_MAX_CONTROL_DISTANCE * PLAYER_MAX_CONTROL_DISTANCE{
+			continue;
+		}
+		let shoot_dir = target_rotation.0 * Vec3::Z;
+		let kick_time = message.kick_time;
 
-	let shoot_dir = if player_movement.direction.length_squared() < EPSILON_TOLERANCE{
-		player_rotation.0 * Vec3::Z
-	}
-	else{
-		Vec3::new(player_movement.direction.x, 0., player_movement.direction.y).normalize_or_zero()
-	};
 
-	match event.intent{
-		PlayerIntent::Pass => { 
+		if kick_time > PASS_THRESHOLD{
+			// big kick
+			let power = (kick_time / MAX_POWER_HOLD).min(1.0);
+			info!("Shoot {}", power);
+			let shoot = shoot_dir.with_y(power * 0.15).normalize();
+			//let shot_dir = Vec3::new(player_movement.direction.x, 0.2, player_movement.direction.y).normalize_or_zero();
+			velocity.direction = Dir3::new_unchecked(shoot);
+			velocity.speed = power* 60.0;
+			commands.entity(ball_entity).insert((
+				ActiveControl{ team:team.0 },
+				AfterTouch(Timer::from_seconds(0.5, TimerMode::Once))
+			));
+		}	
+		else{
+			//pass
 			let is_top_team = Some(team.0) == match_state.top_team;
 			let pass_candidates = match is_top_team{
 				true => &match_state.north_team,
 				false => &match_state.south_team,
 			};
-			let forward = player_rotation.0 * Vec3::Z;
+
 			let mut best_distance_angle:Option<f32> = None;
 			let mut best_pass_candidate:Option<PlayerSnapshot> = None;
 
 			for candidate in pass_candidates{
 				//dont pass to yourself that'd be dumb!
-				if candidate.entity == event.entity{ continue; }
+				if candidate.entity == message.entity{ continue; }
 
 				let diff = candidate.translation - player_translation.0;
 				if diff.length_squared() > MAX_PASS_DISTANCE * MAX_PASS_DISTANCE{ continue; }
-				let angle = diff.angle_between(forward).abs();
+				let angle = diff.angle_between(shoot_dir).abs();
 				if angle < MAX_PASS_DEFLECTION {
 					let distance_angle = (0.2 + angle) * diff.length();
 					if best_distance_angle.is_none() || best_distance_angle > Some(distance_angle){
@@ -564,7 +616,7 @@ fn player_intent_event(
 					}
 				}
 			}
-			if let Some(candidate) =best_pass_candidate {
+			if let Some(candidate) = best_pass_candidate {
 				let diff = candidate.translation - player_translation.0;
 				let dist = diff.length();
 				let eta = dist / PASS_SPEED;
@@ -573,7 +625,7 @@ fn player_intent_event(
 				velocity.direction = Dir3::new_unchecked(shoot_vector);
 				velocity.speed = PASS_SPEED;
 				info!("Pass to {} travel time {}", candidate.entity, eta);
-				message_writer.write(ActivePlayerSwitch(candidate.entity));
+				active_player_message_writer.write(ActivePlayerSwitch(candidate.entity));
 			}
 			else{
 				velocity.direction = Dir3::new_unchecked(shoot_dir);
@@ -585,36 +637,8 @@ fn player_intent_event(
 				));
 			}
 			
-		},
-		PlayerIntent::Shoot(power) => { 
-			
-			info!("Shoot {}", power);
-			let shoot = shoot_dir.with_y(power * 0.2).normalize();
-			//let shot_dir = Vec3::new(player_movement.direction.x, 0.2, player_movement.direction.y).normalize_or_zero();
-			velocity.direction = Dir3::new_unchecked(shoot);
-			velocity.speed = power* 60.0;
-			commands.entity(ball_entity).insert((
-				ActiveControl{ team:team.0 },
-				AfterTouch(Timer::from_seconds(0.5, TimerMode::Once))
-			));
-		},
+		}
 	}
 }
 
 
-fn player_context_event(
-	event:On<PlayerContextEvent>,
-	player_query:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, &MovementControl), Without<Ball>>,
-	ball:Single<&PhysicalTranslation, With<Ball>>
-){
-	let Ok((player_translation, _player_rotation, _player_velocity, _player_movement)) = player_query.get(event.entity) else {
-		return; 
-	};
-	let ball_translation = ball.into_inner();
-	let diff = ball_translation.0 - player_translation.0;
-	if diff.length_squared() < MAX_INTERACTION_DISTANCE_SQUARED{ return; }
-
-	info!("Context");
-	//decide if we're sliding, throwing in, heading, whatever...and do it!
-
-}
