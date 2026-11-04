@@ -5,16 +5,18 @@ use bevy_asset_loader::prelude::*;
 use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{AfterTouch, Ball, MAX_INTERACTION_DISTANCE_SQUARED}, constants::*, game_control::{ActiveControl, MovementControl}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, match_state::{MatchState, PlayerSnapshot}, physics::{Collider, ColliderShape, CylinderTarget, EPSILON_TOLERANCE, Velocity}, shared::{PitchAreaMask, SoccerCollider}, team::{PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
 
 const PLAYER_SPEED: f32 = 10.;
-const PLAYER_SLIDE_SPEED: f32 = 15.;
+const PLAYER_SLIDE_SPEED: f32 = 18.;
+const PLAYER_SLIDE_RECOVERY_TIME: f32 = 0.5;
+const PLAYER_SLIDE_TIME:f32 = 0.6;
 const PLAYER_TURN_SPEED: f32 = 3.0;
 const PLAYER_COLLISION_RADIUS:f32 = 0.5;
 const PLAYER_RESTITUTION:f32 = 0.6;
+
 pub const PLAYER_HEIGHT:f32 = 1.8;
 //maximum button hold time for max power
 const MAX_POWER_HOLD:f32 = 0.5;
 const KICK_RECOVERY_TIME:f32 = 0.3;
 const PASS_THRESHOLD:f32 = 0.2;
-const SLIDE_TIME:f32 = 0.5;
 const MAX_PASS_DISTANCE:f32 = 30.;
 const MAX_PASS_DEFLECTION:f32 = PI * 0.125;
 const PASS_SPEED:f32 = 20.;
@@ -57,18 +59,6 @@ pub struct ActiveMarker;
 #[derive(Component)]
 pub struct GoalKeeper;
 
-#[derive(EntityEvent)]
-pub struct PlayerIntentEvent{
-	entity:Entity,
-	intent:PlayerIntent,
-}
-
-
-#[derive(EntityEvent)]
-pub struct PlayerContextEvent{
-	entity:Entity,
-}
-
 #[derive(Component)]
 pub struct TargetRotation(Quat);
 
@@ -105,11 +95,6 @@ pub enum PlayerState {
 	SlideRecover(Timer),
 }
 
-
-pub enum PlayerIntent{
-	Pass,
-	Shoot (f32),
-}
 
 
 #[derive(AssetCollection, Resource, Default)]
@@ -236,7 +221,10 @@ fn spawn_players(
 			.observe(init_player_animations)
 			.observe(init_player_skin)
 			.id();
+			if i == 10{
+				commands.entity(id).insert(GoalKeeper);
 
+			}
 
 			info!("spawned player {}", id);
 			//cheat and make north player 1 active for now
@@ -346,7 +334,7 @@ fn plan_movement(
 				if movement.kick{	
 					if ball.0.distance_squared(translation.0) >4.{
 						slide_message_writer.write(SlideMessage { entity, start:true });
-						*state = PlayerState::Slide(Timer::from_seconds(SLIDE_TIME, TimerMode::Once))
+						*state = PlayerState::Slide(Timer::from_seconds(PLAYER_SLIDE_TIME, TimerMode::Once))
 					}
 					else{
 						*state = PlayerState::KickWindup(Stopwatch::new());
@@ -370,8 +358,10 @@ fn plan_movement(
 			},
 			PlayerState::Slide(timer) => {
 				timer.tick(time.delta());
+				velocity.speed = PLAYER_SLIDE_SPEED * (1.0 - timer.fraction().powf(3.0));
+				//info!("speed {}", velocity.speed);
 				if timer.is_finished(){
-					*state = PlayerState::SlideRecover(Timer::from_seconds(0.5, TimerMode::Once));
+					*state = PlayerState::SlideRecover(Timer::from_seconds(PLAYER_SLIDE_RECOVERY_TIME, TimerMode::Once));
 				}
 				continue;
 			},
