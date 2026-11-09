@@ -3,7 +3,7 @@ use std::f32::consts::PI;
 use bevy::{asset::RenderAssetUsages, color::palettes::css::{RED, WHITE, YELLOW}, gltf::GltfMesh, light::NotShadowCaster, math::VectorSpace, mesh::Indices, prelude::*, };
 use bevy_asset_loader::prelude::*;
 
-use crate::{assets::AssetLoadState, game_state::GameState, get_gltf_primative, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}, motion::{PhysicalTranslation, Static}, physics::{ColliderShape, CylinderTarget, PlaneTarget}, shared::SoccerCollider};
+use crate::{assets::AssetLoadState, ball::BALL_RADIUS, game_state::GameState, get_gltf_primative, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}, motion::{PhysicalTranslation, Static}, physics::{ColliderShape, CylinderTarget, PlaneTarget}, shared::{ColliderType, SoccerCollider}};
 
 const LINE_FLOAT_HEIGHT: f32 = 0.05;
 const PITCH_RESTITUTION:f32 = 0.65;
@@ -380,6 +380,7 @@ fn pitch_side_colliders(
 			filter: outside_filter,			
 		}
 		PhysicalTranslation(Vec3::new(-half_goal,0., end * pitch_config.half_length))
+
 	}
 }
 
@@ -648,6 +649,26 @@ fn build_pitch(
 			}
 			Static
 			PhysicalTranslation(Vec3::new(0.,pitch_config.goal_height,0.))
+			--
+			#South_Goal_Sensor
+			SoccerCollider{ 
+				shape: ColliderShape::Plane(PlaneTarget { normal:  Dir3::NEG_Z }),
+				restitution: NET_RESTITUTION,
+				filter: PitchCollisionZone::INSIDE_GOAL,
+			}
+			ColliderType::Sensor
+			Static
+			PhysicalTranslation(Vec3::new(0.,0.,pitch_config.half_length + BALL_RADIUS + pitch_config.line_width))
+			--			
+			#North_Goal_Sensor
+			SoccerCollider{ 
+				shape: ColliderShape::Plane(PlaneTarget { normal:  Dir3::Z }),
+				restitution: NET_RESTITUTION,
+				filter: PitchCollisionZone::INSIDE_GOAL,
+			}
+			ColliderType::Sensor
+					Static
+			PhysicalTranslation(Vec3::new(0.,0.,pitch_config.half_length - BALL_RADIUS - pitch_config.line_width))
 			--
 			{ pitch_side_colliders(pitch_config.clone(), 1., PitchCollisionZone::SOUTH) }	
 			--

@@ -308,14 +308,28 @@ fn do_movement(
 			let time_since_last = delta * collision.time;
 			delta -= time_since_last;
 			time_offset += time_since_last;
-			let collision_point_shifted = collision.point + collision.normal * EPSILON_TOLERANCE;
-			translation.0 = collision_point_shifted;
+
+			let collision_adjustment = collision.normal * EPSILON_TOLERANCE;
+
+			//let collision_point_shifted = collision.point + collision.normal * EPSILON_TOLERANCE;
 			
+
+
 			let bounce = {
 				if let Ok(collider_type) = collider_type_query.get(collision.entity){
 					match collider_type{
-						ColliderType::Tackle => true,
-						ColliderType::Sensor => false,
+						ColliderType::Tackle => {
+							translation.0 = collision.point + collision_adjustment;
+							info!("slide!");
+							return;
+						}
+						ColliderType::Sensor => {
+							translation.0 = collision.point - collision_adjustment;
+							info!("GOOOOOAAAALLLLL!!!!");
+							false
+						}
+						
+						ColliderType::None => true,
 					}
 				}
 				else{
@@ -323,6 +337,10 @@ fn do_movement(
 				}
 			};
 			if bounce{
+
+				translation.0 = collision.point + collision_adjustment;
+
+
 				let ball_v = ball_velocity.to_vec3();
 				let approach_v = ball_v - target_velocity;
 				let normal_vec:Vec3 = collision.normal.into();
@@ -331,7 +349,7 @@ fn do_movement(
 				let next_ball_vel = ball_v - (1.0 + restitution) * approach_speed * normal_vec;
 				//info!("bounce! {}", restitution);
 				*ball_velocity = Velocity::from_vec3(next_ball_vel).unwrap_or(Velocity::ZERO);
-				ball_movement = ball_velocity.as_frame_motion(collision_point_shifted, 0., delta);
+				ball_movement = ball_velocity.as_frame_motion(translation.0, 0., delta);
 			}
 		}
 		else{
