@@ -653,22 +653,46 @@ fn build_pitch(
 			#South_Goal_Sensor
 			SoccerCollider{ 
 				shape: ColliderShape::Plane(PlaneTarget { normal:  Dir3::NEG_Z }),
-				restitution: NET_RESTITUTION,
-				filter: PitchCollisionZone::INSIDE_GOAL,
+				restitution: 0.,
+				filter: PitchCollisionZone::SOUTH,
 			}
 			ColliderType::Sensor
 			Static
 			PhysicalTranslation(Vec3::new(0.,0.,pitch_config.half_length + BALL_RADIUS + pitch_config.line_width))
+			SensorType::End
 			--			
 			#North_Goal_Sensor
 			SoccerCollider{ 
 				shape: ColliderShape::Plane(PlaneTarget { normal:  Dir3::Z }),
-				restitution: NET_RESTITUTION,
-				filter: PitchCollisionZone::INSIDE_GOAL,
+				restitution: 0.,
+				filter: PitchCollisionZone::NORTH,
 			}
 			ColliderType::Sensor
-					Static
-			PhysicalTranslation(Vec3::new(0.,0.,pitch_config.half_length - BALL_RADIUS - pitch_config.line_width))
+			Static
+			SensorType::End
+			PhysicalTranslation(Vec3::new(0.,0.,-pitch_config.half_length - BALL_RADIUS - pitch_config.line_width))
+			--			
+			#East_Side_Sensor
+			SoccerCollider{ 
+				shape: ColliderShape::Plane(PlaneTarget { normal:  Dir3::NEG_X }),
+				restitution: 0.,
+				filter: PitchCollisionZone::ANY,
+			}
+			ColliderType::Sensor
+			Static
+			SensorType::Side
+			PhysicalTranslation(Vec3::new(pitch_config.half_width + BALL_RADIUS + pitch_config.line_width,0.,0.))
+			--			
+			#West_Side_Sensor
+			SoccerCollider{ 
+				shape: ColliderShape::Plane(PlaneTarget { normal:  Dir3::X }),
+				restitution: 0.,
+				filter: PitchCollisionZone::ANY,
+			}
+			ColliderType::Sensor
+			Static
+			SensorType::Side
+			PhysicalTranslation(Vec3::new(-pitch_config.half_width - BALL_RADIUS - pitch_config.line_width,0.,0.))
 			--
 			{ pitch_side_colliders(pitch_config.clone(), 1., PitchCollisionZone::SOUTH) }	
 			--
@@ -677,6 +701,14 @@ fn build_pitch(
 
 		]
 	}
+}
+
+
+#[derive(Component, Clone, Copy, Default)]
+pub enum SensorType{
+	#[default]
+	Side,
+	End,
 }
 
 

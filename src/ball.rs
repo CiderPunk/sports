@@ -32,9 +32,11 @@ impl Plugin for BallPlugin{
 				LoadingStateConfig::new(AssetLoadState::Startup)
 				.load_collection::<BallAssets>(),
 			)
+			.add_message::<PitchSensorMessage>()
 			.add_systems(OnEnter(GameState::Playing), spawn_ball)
 			.add_systems(FixedUpdate, (after_touch, dribble, physics).chain().in_set(GameSchedule::PreMovement))
 			.add_systems(FixedUpdate, (do_movement, do_rotation).chain().in_set(GameSchedule::Movement))
+
 
 
 			//.add_systems(Update, (debug_ball_position).run_if(on_timer(Duration::from_secs_f32(0.5))))
@@ -67,6 +69,11 @@ pub struct Rotation{
 	speed:f32,
 }
 
+#[derive(Message)]
+pub struct PitchSensorMessage{
+	pub entity:Entity, 
+	pub location:Vec3,
+}
 
 /*
 fn debug_ball_position(
@@ -250,6 +257,7 @@ fn do_movement(
 	collider_type_query:Query<&ColliderType>,
 	time:Res<Time<Fixed>>,
 	pitch_config:Res<PitchConfiguration>,
+	mut pitch_sensor_writer:MessageWriter<PitchSensorMessage>,
 ){
 	let (ball_entity, mut translation, mut ball_velocity, ball) = ball.into_inner();
 	let ball_translation = translation.0;
@@ -325,10 +333,9 @@ fn do_movement(
 						}
 						ColliderType::Sensor => {
 							translation.0 = collision.point - collision_adjustment;
-							info!("GOOOOOAAAALLLLL!!!!");
+							pitch_sensor_writer.write(PitchSensorMessage { entity: collision.entity, location: collision.point });
 							false
 						}
-						
 						ColliderType::None => true,
 					}
 				}
