@@ -11,19 +11,19 @@ mod physics;
 mod game_gizmos;
 mod kit;
 mod animation_manager;
-mod interpolation;
 mod team;
 mod match_state;
 mod think_distributor;
 mod helpers;
 mod constants;
 mod shared;
+mod motion;
 
 use bevy::{color::palettes::css::WHITE, light::{ CascadeShadowConfigBuilder, DirectionalLightShadowMap}, prelude::*};
 use bevy_enhanced_input::EnhancedInputPlugin;
 use bevy_prng::WyRand;
 use bevy_rand::plugin::EntropyPlugin;
-use crate::{animation_manager::AnimationManagerPlugin, assets::AssetsPlugin, ball::BallPlugin, game_camera::GameCameraPlugin, game_control::GameControlPlugin, game_gizmos::GameGizmosPlugin, game_schedule::GameSchedulePlugin, game_state::GameStatePlugin, interpolation::InterpolationPlugin, kit::KitPlugin, match_state::MatchStatePlugin, physics::PhysicsPlugin, pitch::PitchPlugin, player::PlayerPlugin, team::TeamPlugin, think_distributor::ThinkDistributorPlugin};
+use crate::{animation_manager::AnimationManagerPlugin, assets::AssetsPlugin, ball::BallPlugin, game_camera::GameCameraPlugin, game_control::GameControlPlugin, game_gizmos::GameGizmosPlugin, game_schedule::GameSchedulePlugin, game_state::GameStatePlugin, kit::KitPlugin, match_state::MatchStatePlugin, motion::MotionPlugin, physics::PhysicsPlugin, pitch::PitchPlugin, player::PlayerPlugin, team::TeamPlugin, think_distributor::ThinkDistributorPlugin};
 
 const APP_NAME: &str = "Sportsball";
 fn main() {
@@ -44,7 +44,6 @@ fn main() {
 
 		))		
 		.add_plugins((
-			InterpolationPlugin,
 			GameStatePlugin,
 			GameSchedulePlugin,
 			AssetsPlugin,
@@ -59,6 +58,7 @@ fn main() {
 			PhysicsPlugin,
 			TeamPlugin,
 			MatchStatePlugin,
+			MotionPlugin,
 
 		))
 		.add_plugins((

@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::{ball::Ball, game_state::GameState, interpolation::PhysicalTranslation, physics::Velocity, pitch::PitchConfiguration, team::{Team, TeamMember}};
+use crate::{ball::Ball, game_state::GameState, motion::*, pitch::PitchConfiguration, team::{Team, TeamMember}};
  
 pub struct MatchStatePlugin;
 
