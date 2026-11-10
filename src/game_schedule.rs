@@ -19,4 +19,5 @@ impl Plugin for GameSchedulePlugin{
 pub enum GameSchedule{
 	PreMovement,
 	Movement,
+	PostMovement,
 }

@@ -34,11 +34,14 @@ impl Plugin for PlayerPlugin{
 			.add_message::<ActivePlayerSwitch>()
 			.add_message::<KickMessage>()
 			.add_message::<SlideMessage>()
+			.add_message::<BallInteractionMessage>()
 			.add_systems(OnEnter(GameState::Initialize), (init_markers, init_player, spawn_players).chain())
 			.add_systems(Update, (update_active_marker_position, animate_player))
 			.add_systems(FixedUpdate,  (plan_movement, (kick_event_handler, slide_event_handler) ).chain().in_set(GameSchedule::PreMovement))
 			.add_systems(FixedUpdate, (switch_active_player, player_think, do_movement).in_set(GameSchedule::Movement))
 			.add_systems(Update, (check_active_player).run_if(on_timer(Duration::from_secs_f32(0.2))))
+			.add_systems(FixedUpdate, interaction_handler.in_set(GameSchedule::PostMovement))
+			
 			;
 	}
 }
@@ -84,7 +87,10 @@ pub struct SlideMessage{
 	start:bool,
 }
 
-
+#[derive(Message)]
+pub struct BallInteractionMessage{
+	pub entity:Entity,
+}
 
 #[derive(Component, Default, PartialEq, Eq)]
 pub enum PlayerState {
@@ -327,9 +333,7 @@ fn plan_movement(
 	mut kick_message_writer:MessageWriter<KickMessage>,
 	mut slide_message_writer:MessageWriter<SlideMessage>,
 ){
-
 	for (entity, mut state,  movement, mut target_rotation, mut velocity, translation) in query{
-	
 		match &mut *state{
 			PlayerState::None => {
 				if movement.kick{	
@@ -557,6 +561,30 @@ fn slide_event_handler(
 		}
 	}
 }
+
+
+
+fn interaction_handler(
+	mut message_reader:MessageReader<BallInteractionMessage>,
+	collider_query:Query<&PhysicalParent, Without<Ball>>,
+	player_query:Query<(&Velocity, &MovementControl), (Without<PhysicalParent>, Without<Ball>)>,
+	mut ball_velocity:Single<&mut Velocity, With<Ball>>,
+){
+	for message in message_reader.read(){
+		let Ok(parent_entity) = collider_query.get(message.entity) else { continue;};
+		let Ok((velocity, movement)) = player_query.get(parent_entity.0) else{ continue;};
+		//let shoot_dir = if movement.direction.length_squared() > EPSILON_TOLERANCE{
+		let movement_3d = Vec3::new(movement.direction.x, 0.0, movement.direction.y);
+		let shoot_dir = Dir3::new(movement_3d).unwrap_or(velocity.direction);
+		let power = velocity.speed / PLAYER_SLIDE_SPEED;
+		info!("Tackle! {}", power);
+
+		ball_velocity.direction = shoot_dir;
+		ball_velocity.speed = power * 60.0;
+	}
+}
+
+
 
 fn kick_event_handler(
 	mut commands:Commands,

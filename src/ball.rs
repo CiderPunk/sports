@@ -1,7 +1,7 @@
 use bevy::{camera::visibility::NoFrustumCulling, math::FloatPow, prelude::*, time::Stopwatch};
 use std::f32::consts::PI;
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, constants::*, game_control::{ActiveControl, MovementControl}, game_schedule::GameSchedule, game_state::GameState, helpers::*, motion::{PhysicalRotation, PhysicalTranslation, Velocity}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget}, pitch::{PitchCollisionZone, PitchConfiguration}, player::{Player, PlayerState}, shared::{ColliderType, SoccerCollider}};
+use crate::{assets::AssetLoadState, constants::*, game_control::{ActiveControl, MovementControl}, game_schedule::GameSchedule, game_state::GameState, helpers::*, motion::{PhysicalRotation, PhysicalTranslation, Velocity}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget}, pitch::{PitchCollisionZone, PitchConfiguration}, player::{Player, PlayerState, BallInteractionMessage}, shared::{ColliderType, SoccerCollider}};
 
 const BALL_SCALE: f32 = 0.5;
 pub const BALL_RADIUS:f32 = 0.25 * BALL_SCALE;
@@ -258,6 +258,7 @@ fn do_movement(
 	time:Res<Time<Fixed>>,
 	pitch_config:Res<PitchConfiguration>,
 	mut pitch_sensor_writer:MessageWriter<PitchSensorMessage>,
+	mut ball_interaction_writer:MessageWriter<BallInteractionMessage>,
 ){
 	let (ball_entity, mut translation, mut ball_velocity, ball) = ball.into_inner();
 	let ball_translation = translation.0;
@@ -320,15 +321,12 @@ fn do_movement(
 			let collision_adjustment = collision.normal * EPSILON_TOLERANCE;
 
 			//let collision_point_shifted = collision.point + collision.normal * EPSILON_TOLERANCE;
-			
-
-
 			let bounce = {
 				if let Ok(collider_type) = collider_type_query.get(collision.entity){
 					match collider_type{
 						ColliderType::Tackle => {
 							translation.0 = collision.point + collision_adjustment;
-							info!("slide!");
+							ball_interaction_writer.write(BallInteractionMessage{ entity:collision.entity });
 							return;
 						}
 						ColliderType::Sensor => {
