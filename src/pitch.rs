@@ -285,7 +285,7 @@ fn pitch_side_colliders(
 	let outside_filter = PitchAreaMask::OUTSIDE_GOAL.combine(end_filter);
 	let inside_filter = PitchAreaMask::INSIDE_GOAL.combine(end_filter);
 	
-	let goal_back = Dir3::from_xyz(0., -GOAL_BACK_ANGLE.cos() , GOAL_BACK_ANGLE.sin() * end * -1.)
+	let goal_back = Dir3::from_xyz(0., -GOAL_BACK_ANGLE.cos() , -GOAL_BACK_ANGLE.sin() * end)
 		.expect("Invalid goal back angle");
 
 
