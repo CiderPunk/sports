@@ -21,8 +21,7 @@ const BALL_MASS:f32 = 0.43;
 //const GROUND_DECELERATION:f32 = (BALL_MASS * GRAVITY * ROLLING_RESISTANCE) / BALL_MASS;  
 const GROUND_DECELERATION:f32 = GRAVITY_DOWN * ROLLING_RESISTANCE;  
 pub const MAX_DRIBBLE_HEIGHT:f32 = 1.;
-pub const SPEED_MATCH_FACTOR:f32 = 26.0;
-pub const DISTANCE_MATCH_FACTPR:f32 = 190.0;
+
 
 pub struct BallPlugin;
 impl Plugin for BallPlugin{
@@ -151,6 +150,7 @@ fn after_touch(
 fn dribble(
 	ball:Single<(&mut Ball, &mut Velocity, &PhysicalTranslation)>,
 	players:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, Entity, &PlayerState), (With<Player>, Without<Ball>)>,
+	player_query:Query<&Player>,
 	mut gizmos: Gizmos,
 	time:Res<Time<Fixed>>,
 ){
@@ -182,11 +182,12 @@ fn dribble(
 	}
 
 	if let Some(candidate) = closest{
+ 		let Ok(player) = player_query.get(candidate.entity) else{ panic!("Failed getting controling player entity");};
 		ball.possession = Some(candidate.entity);
 		let mut ball_vec = ball_velocity.to_vec3();
 		let vel_diff = candidate.velocity.to_vec3() - ball_vec;
-		let control_force = -candidate.to_control_point * DISTANCE_MATCH_FACTPR;
-		let speed_match_force = vel_diff * SPEED_MATCH_FACTOR;
+		let control_force = -candidate.to_control_point * player.distance_match_factor;
+		let speed_match_force = vel_diff * player.speed_match_factor;
 		let combined_force = control_force + speed_match_force;
 		ball_vec += time.delta_secs() * combined_force;
 

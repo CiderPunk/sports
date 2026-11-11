@@ -54,7 +54,15 @@ impl Plugin for PlayerPlugin{
 #[require(TargetRotation)]
 #[require(PlayerState)]
 pub struct Player{
-	kit:KitConfiguration,
+	pub distance_match_factor:f32,
+	pub speed_match_factor:f32
+}
+
+
+impl Default for Player{
+	fn default() -> Self {
+		Self { distance_match_factor: DISTANCE_MATCH_FACTOR, speed_match_factor: SPEED_MATCH_FACTOR }
+	}
 }
 
 #[derive(Component)]
@@ -206,7 +214,8 @@ fn spawn_players(
 			};
 
 			let id = commands.spawn((
-				Player{ kit },
+				kit,
+				Player{ ..default() },
 				MovementControl{ direction: Vec2::ZERO, kick_timer: Stopwatch::new(), kick:false },
 				WorldAssetRoot(player_assets.player_scene.clone()),
 				Transform::default(),
@@ -261,7 +270,7 @@ fn spawn_players(
 fn init_player_skin(
 	event:On<WorldInstanceReady>,
 	children:Query<&Children>,
-	player_query:Query<&Player>,
+	player_query:Query<&KitConfiguration, With<Player>>,
 	material_query:Query<Entity, With<MeshMaterial3d<StandardMaterial>>>,
 	mut kit_generator:KitGenerator,
 	player_assets: Res<PlayerAssets>,
@@ -270,8 +279,8 @@ fn init_player_skin(
 	info!("init skin");
 	for child in children.iter_descendants(event.entity){
 		if let Ok(mesh_entity) = material_query.get(child) 
-			&& let Ok(player) = player_query.get(event.entity) {
-			let texture_handle = kit_generator.get_or_generate_kit(player.kit);
+			&& let Ok(kit) = player_query.get(event.entity) {
+			let texture_handle = kit_generator.get_or_generate_kit(*kit);
 			let material_handle = kit_generator.make_material(player_assets.player_material.clone(), texture_handle);
 			commands.entity(mesh_entity).insert(MeshMaterial3d(material_handle));
 			break;

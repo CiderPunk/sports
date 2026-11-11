@@ -68,7 +68,7 @@ pub enum KitPattern{
 	Quatered, 
 }
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[derive(Component, Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct KitConfiguration{
 	pub pattern:KitPattern,
 	pub colour_primary: KitColour,
