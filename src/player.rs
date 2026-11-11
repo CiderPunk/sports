@@ -2,15 +2,19 @@ use bevy::prelude::*;
 use std::{f32::consts::PI, time::Duration };
 use bevy::{gltf::GltfMesh, light::NotShadowCaster, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
-use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{AfterTouch, Ball, MAX_INTERACTION_DISTANCE_SQUARED}, constants::*, game_control::{ActiveControl, MovementControl}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, interpolation::{PhysicalRotation, PhysicalTranslation}, kit::{KitConfiguration, KitGenerator}, match_state::{MatchState, PlayerSnapshot}, physics::{Collider, ColliderShape, CylinderTarget, EPSILON_TOLERANCE, Velocity}, shared::{PitchAreaMask, SoccerCollider}, team::{PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
+use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{AfterTouch, Ball}, constants::*, game_control::{ActiveControl, MovementControl}, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, kit::{KitConfiguration, KitGenerator}, match_state::{MatchState, PlayerSnapshot}, motion::{ChildPhysicalOffset, PhysicalChildren, PhysicalParent, PhysicalRotation, PhysicalTranslation, Velocity}, physics::{ColliderShape::{self, Sphere}, CylinderTarget, EPSILON_TOLERANCE, SphereTarget}, pitch::PitchCollisionZone, shared::{ColliderType, SoccerCollider}, team::{PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_SLIDE_SPEED: f32 = 18.;
 const PLAYER_SLIDE_RECOVERY_TIME: f32 = 0.5;
 const PLAYER_SLIDE_TIME:f32 = 0.6;
+const PLAYER_SLIDE_MIN_DISTANCE:f32 = 1.5;
 const PLAYER_TURN_SPEED: f32 = 3.0;
+
 const PLAYER_COLLISION_RADIUS:f32 = 0.5;
 const PLAYER_RESTITUTION:f32 = 0.6;
+const SLIDE_COLLIDER_RADIUS:f32 = 0.75;
+const SLIDE_OFFSET_DISTANCE:f32 = 0.4;
 
 pub const PLAYER_HEIGHT:f32 = 1.8;
 //maximum button hold time for max power
@@ -33,11 +37,14 @@ impl Plugin for PlayerPlugin{
 			.add_message::<ActivePlayerSwitch>()
 			.add_message::<KickMessage>()
 			.add_message::<SlideMessage>()
+			.add_message::<BallInteractionMessage>()
 			.add_systems(OnEnter(GameState::Initialize), (init_markers, init_player, spawn_players).chain())
 			.add_systems(Update, (update_active_marker_position, animate_player))
 			.add_systems(FixedUpdate,  (plan_movement, (kick_event_handler, slide_event_handler) ).chain().in_set(GameSchedule::PreMovement))
 			.add_systems(FixedUpdate, (switch_active_player, player_think, do_movement).in_set(GameSchedule::Movement))
 			.add_systems(Update, (check_active_player).run_if(on_timer(Duration::from_secs_f32(0.2))))
+			.add_systems(FixedUpdate, interaction_handler.in_set(GameSchedule::PostMovement))
+			
 			;
 	}
 }
@@ -83,7 +90,10 @@ pub struct SlideMessage{
 	start:bool,
 }
 
-
+#[derive(Message)]
+pub struct BallInteractionMessage{
+	pub entity:Entity,
+}
 
 #[derive(Component, Default, PartialEq, Eq)]
 pub enum PlayerState {
@@ -211,7 +221,7 @@ fn spawn_players(
 						length: PLAYER_HEIGHT
 					}),
 					restitution:PLAYER_RESTITUTION,
-					filter: PitchAreaMask::ANY,
+					filter: PitchCollisionZone::ANY,
 				},
 				Position(POSITIONS[i]),
 				TeamMember(team_entity),
@@ -326,13 +336,13 @@ fn plan_movement(
 	mut kick_message_writer:MessageWriter<KickMessage>,
 	mut slide_message_writer:MessageWriter<SlideMessage>,
 ){
-
 	for (entity, mut state,  movement, mut target_rotation, mut velocity, translation) in query{
-	
 		match &mut *state{
 			PlayerState::None => {
 				if movement.kick{	
-					if ball.0.distance_squared(translation.0) >4.{
+
+
+					if ball.0.distance_squared(translation.0) > PLAYER_SLIDE_MIN_DISTANCE * PLAYER_SLIDE_MIN_DISTANCE{
 						slide_message_writer.write(SlideMessage { entity, start:true });
 						*state = PlayerState::Slide(Timer::from_seconds(PLAYER_SLIDE_TIME, TimerMode::Once))
 					}
@@ -512,31 +522,85 @@ fn player_think(
 }
 
 
+
 fn slide_event_handler(
 	mut commands:Commands,
 	mut slide_message_reader:MessageReader<SlideMessage>,
 	mut player_query:Query<(&TargetRotation, &mut Velocity), Without<Ball>>,
+	child_query:Query<&PhysicalChildren>,
 	mut animation_manager:AnimationManager<Player>,
+	game_gizmos:Res<GameGizmoStore>,
 ){
 	for message in slide_message_reader.read(){
-
 		let Ok((target_rotation, mut velocity)) = player_query.get_mut(message.entity) else{
 			continue;
 		};
+		let gizmo_handle = game_gizmos.sphere_colours.get(&GizmoColour::Red).expect("missing colour gizmo");
 
 		match message.start{
 			true=>{ 
 				velocity.direction = Dir3::new_unchecked(target_rotation.0 * Vec3::Z);
 				velocity.speed = PLAYER_SLIDE_SPEED;
 				animation_manager.set_animation(message.entity, PlayerAnim::Slide.into(), 0.2, 1.0, false);
+				commands.spawn((
+					Name::new("slide collider"),
+					SoccerCollider{ shape: Sphere(SphereTarget{ radius: SLIDE_COLLIDER_RADIUS }), restitution: 0.1, filter: PitchCollisionZone::ANY },
+					PhysicalParent(message.entity),
+					ChildPhysicalOffset(Vec3::new(0., 0.,SLIDE_OFFSET_DISTANCE)),
+					Gizmo{
+						handle:gizmo_handle.clone(),
+						..default()
+					},
+					Transform::from_scale(Vec3::splat(SLIDE_COLLIDER_RADIUS)),
+					ColliderType::Tackle(false),
+				));
 			},
 			false=>{ 
 				velocity.speed = 0.0;
 				animation_manager.set_animation(message.entity, PlayerAnim::SlideUp.into(), 0.2, 1.0, false);
+				if let Ok(children) = child_query.get(message.entity){
+					for child in children.iter(){
+						commands.entity(child).despawn();
+					}
+				}
 			},
 		}
 	}
 }
+
+
+
+fn interaction_handler(
+	mut message_reader:MessageReader<BallInteractionMessage>,
+	mut collider_query:Query<(&mut ColliderType, &PhysicalParent), Without<Ball>>,
+	player_query:Query<(&Velocity, &MovementControl), (Without<PhysicalParent>, Without<Ball>)>,
+	mut ball_velocity:Single<&mut Velocity, With<Ball>>,
+){
+	for message in message_reader.read(){
+		let Ok((mut collider_type, parent_entity)) = collider_query.get_mut(message.entity) else { continue;};
+		let Ok((velocity, movement)) = player_query.get(parent_entity.0) else{ continue;};
+
+		match &mut *collider_type{
+			ColliderType::None => (),
+			ColliderType::Tackle(connected) => { 
+
+				if *connected { continue; }
+				*connected = true },
+			ColliderType::Sensor => (),
+		}
+
+		//let shoot_dir = if movement.direction.length_squared() > EPSILON_TOLERANCE{
+		let movement_3d = Vec3::new(movement.direction.x, 0.0, movement.direction.y);
+		let shoot_dir = Dir3::new(movement_3d).unwrap_or(velocity.direction);
+		let power = velocity.speed / PLAYER_SLIDE_SPEED;
+		info!("Tackle! {}", power);
+
+		ball_velocity.direction = shoot_dir;
+		ball_velocity.speed = velocity.speed;
+	}
+}
+
+
 
 fn kick_event_handler(
 	mut commands:Commands,

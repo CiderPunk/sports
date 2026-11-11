@@ -3,7 +3,7 @@ use std::f32::consts::PI;
 use bevy::{asset::RenderAssetUsages, color::palettes::css::{RED, WHITE, YELLOW}, gltf::GltfMesh, light::NotShadowCaster, math::VectorSpace, mesh::Indices, prelude::*, };
 use bevy_asset_loader::prelude::*;
 
-use crate::{assets::AssetLoadState, game_state::GameState, get_gltf_primative, interpolation::{PhysicalTranslation, Static}, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}, physics::{Collider, ColliderFilter, ColliderShape, CylinderTarget, PlaneTarget}, shared::{PitchAreaMask, SoccerCollider}};
+use crate::{assets::AssetLoadState, ball::BALL_RADIUS, game_state::GameState, get_gltf_primative, kit::{KitColour, KitConfiguration, KitGenerator, KitPattern}, motion::{PhysicalTranslation, Static}, physics::{ColliderShape, CylinderTarget, PlaneTarget}, shared::{ColliderType, SoccerCollider}};
 
 const LINE_FLOAT_HEIGHT: f32 = 0.05;
 const PITCH_RESTITUTION:f32 = 0.65;
@@ -29,6 +29,36 @@ impl Plugin for PitchPlugin{
 
 	}
 }
+
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PitchCollisionZone(pub u32);
+
+// Provide standard bitwise operations for your project
+impl PitchCollisionZone {
+	pub const ANY: Self = Self(1 << 0);
+	pub const NORTH: Self = Self(1 << 1); //2
+	pub const SOUTH: Self = Self(1 << 2); //4
+	pub const INSIDE_GOAL: Self = Self(1 << 3); //8
+	pub const OUTSIDE_GOAL: Self = Self(1 << 4); //16
+
+	pub const SOUTH_OUTSIDE_GOAL: Self = Self(PitchCollisionZone::SOUTH.0 | PitchCollisionZone::OUTSIDE_GOAL.0);
+	pub const NORTH_OUTSIDE_GOAL: Self = Self(PitchCollisionZone::NORTH.0 | PitchCollisionZone::OUTSIDE_GOAL.0);
+
+	pub fn contains(&self, other: Self) -> bool {
+		(self.0 & other.0) == other.0
+	}	
+
+	pub fn combine(&self, other: Self) -> Self {
+		Self(self.0 | other.0)
+	}
+}
+
+impl Default for PitchCollisionZone {
+	fn default() -> Self {
+		Self::ANY
+	}
+}
+
 
 #[derive(AssetCollection, Resource, Clone)]
 pub struct PitchAssets {
@@ -276,14 +306,14 @@ fn modify_materials(
 fn pitch_side_colliders(
 	pitch_config:PitchConfiguration,
 	end:f32,
-	end_filter:PitchAreaMask,
+	end_filter:PitchCollisionZone,
 ) -> impl SceneList{
 	let pole_radius = pitch_config.pole_radius;
 	let goal_height = pitch_config.goal_height;
 	let goal_width = pitch_config.half_goal_width * 2.0;
 	let half_goal = pitch_config.half_goal_width;
-	let outside_filter = PitchAreaMask::OUTSIDE_GOAL.combine(end_filter);
-	let inside_filter = PitchAreaMask::INSIDE_GOAL.combine(end_filter);
+	let outside_filter = PitchCollisionZone::OUTSIDE_GOAL.combine(end_filter);
+	let inside_filter = PitchCollisionZone::INSIDE_GOAL.combine(end_filter);
 	
 	let goal_back = Dir3::from_xyz(0., -GOAL_BACK_ANGLE.cos() , -GOAL_BACK_ANGLE.sin() * end)
 		.expect("Invalid goal back angle");
@@ -350,166 +380,11 @@ fn pitch_side_colliders(
 			filter: outside_filter,			
 		}
 		PhysicalTranslation(Vec3::new(-half_goal,0., end * pitch_config.half_length))
+
 	}
 }
-/*
-fn spawn_pitch_colliders(
-	mut commands:Commands,
-	pitch_config:Res<PitchConfiguration>,
-){	
-	let half_pitch_length = pitch_config.half_length;
-	let half_total_width = pitch_config.half_width + pitch_config.border;
-	let half_total_length = half_pitch_length + pitch_config.border;
-	let half_goal = pitch_config.half_goal_width;
 
-	commands.spawn((
-		Name::new("Ground"),
-		Collider{ 
-			shape: crate::physics::ColliderShape::Plane(PlaneTarget{ normal:Dir3::Y,  }),
-			restitution: PITCH_RESTITUTION,
-			filter: PitchAreaMask::ANY,
-		},
-		Static,
-		//Transform::from_xyz(0.,0.,0.),
-		PhysicalTranslation(Vec3::ZERO),
-		children![
-			//4 walls
-			(
-				Name::new("left wall"),
-				SoccerCollider{ 
-					shape: crate::physics::ColliderShape::Plane(PlaneTarget { normal: Dir3::X }),
-					restitution: WALL_RESTITUTION,
-					filter: PitchAreaMask::ANY,
-				},
-				PhysicalTranslation(Vec3::new(-half_total_width, 0., 0.)),
-				Static,
-			),
-			(
-				Name::new("right wall"),
-				SoccerCollider{ 
-					shape: crate::physics::ColliderShape::Plane(PlaneTarget { normal: Dir3::NEG_X }),
-					restitution: WALL_RESTITUTION,
-					filter: PitchAreaMask::ANY,
-				},
-				PhysicalTranslation(Vec3::new(half_total_width, 0., 0.)),
-				Static,
-			),
-			(
-				Name::new("far wall"),
-				Collider{ 
-					shape: crate::physics::ColliderShape::Plane(PlaneTarget { normal: Dir3::Z }),
-					restitution: WALL_RESTITUTION,
-					filter: PitchAreaMask::NORTH_GOAL_OUTSIDE,
-				},
-				PhysicalTranslation(Vec3::new(0., 0., -half_total_length)),
-				Static,
-			),
-			(
-				Name::new("near wall"),
-				Collider{ 
-					shape: crate::physics::ColliderShape::Plane(PlaneTarget { normal: Dir3::NEG_Z }),
-					restitution: WALL_RESTITUTION,
-					filter: PitchAreaMask::SOUTH_GOAL_OUTSIDE,
-				},
-				PhysicalTranslation(Vec3::new(0., 0., half_total_length)),
-				Static,
-			),
-			//bottom goal
-			(
-				Name::new("near right post"),
-				Collider{ 
-					shape: crate::physics::ColliderShape::Cylinder(CylinderTarget { direction: Dir3::Y, radius: pitch_config.pole_radius, length: pitch_config.goal_height }),
-					restitution: POLE_RESTITUTION,
-					filter: PitchAreaMask::SOUTH,
-				},
-				PhysicalTranslation(Vec3::new(half_goal, 0., half_pitch_length)),
-				Static,
-			),
-			(
-				Name::new("near left post"),
-				Collider{ 
-					shape: crate::physics::ColliderShape::Cylinder(CylinderTarget { direction: Dir3::Y, radius: pitch_config.pole_radius, length: pitch_config.goal_height }),
-					restitution: POLE_RESTITUTION,
-					filter: PitchAreaMask::SOUTH,
-				},
-				Static,
-				PhysicalTranslation(Vec3::new(-half_goal, 0., half_pitch_length)),
-			),
-			(
-				Name::new("near top bar"),
-				Collider{ 
-					shape: crate::physics::ColliderShape::Cylinder(CylinderTarget { direction: Dir3::X, radius: pitch_config.pole_radius, length: pitch_config.half_goal_width }),
-					restitution: POLE_RESTITUTION,
-					filter: PitchAreaMask::SOUTH,
-				},
-				Static,
-				PhysicalTranslation(Vec3::new(-half_goal, pitch_config.goal_height, half_pitch_length)),
-			),
-			(
-				Name::new("near goal back"),
-				Collider{
-					shape: crate::physics::ColliderShape::Plane(PlaneTarget { normal: Dir3::NEG_Z }),
-					restitution: NET_RESTITUTION,
-					filter: PitchAreaMask::SOUTH_GOAL_INSIDE,
-				},
-				Static,
-				PhysicalTranslation(Vec3::new(0.,0., half_pitch_length + pitch_config.goal_depth)),
-			),
-			(
-				Name::new("near goal left"),
-				Collider{
-					shape: crate::physics::ColliderShape::Plane(PlaneTarget { normal: Dir3::X}),
-					restitution: NET_RESTITUTION,
-					filter: PitchAreaMask::SOUTH_GOAL_INSIDE,
-				},
-				Static,
-				PhysicalTranslation(Vec3::new(-pitch_config.half_goal_width,0., 0.)),
-			),
-			(
-				Name::new("near goal right"),
-				Collider{
-					shape: crate::physics::ColliderShape::Plane(PlaneTarget { normal: Dir3::NEG_X}),
-					restitution: NET_RESTITUTION,
-					filter: PitchAreaMask::SOUTH_GOAL_INSIDE,
-				},
-				Static,
-				PhysicalTranslation(Vec3::new(pitch_config.half_goal_width,0., 0.)),
-			),
-			//top goal
-			(
-				Name::new("far left post"),
-				Collider{ 
-					shape: crate::physics::ColliderShape::Cylinder(CylinderTarget { direction: Dir3::Y, radius: pitch_config.pole_radius, length: pitch_config.goal_height }),
-					restitution: POLE_RESTITUTION,
-					filter: PitchAreaMask::NORTH,
-				},
-				Static,
-				PhysicalTranslation(Vec3::new(half_goal, 0., -half_pitch_length))
-			),
-			(
-				Name::new("far right post"),
-				Collider{ 
-					shape: crate::physics::ColliderShape::Cylinder(CylinderTarget { direction: Dir3::Y, radius: pitch_config.pole_radius, length: pitch_config.goal_height }),
-					restitution: POLE_RESTITUTION,
-					filter: PitchAreaMask::NORTH,
-				},
-				PhysicalTranslation(Vec3::new(-half_goal, 0., -half_pitch_length)),
-			),
-			(
-				Name::new("far top bar"),
-				Collider{ 
-					shape: crate::physics::ColliderShape::Cylinder(CylinderTarget { direction: Dir3::X, radius: pitch_config.pole_radius, length: pitch_config.half_goal_width }),
-					restitution: POLE_RESTITUTION,
-					filter: PitchAreaMask::NORTH,
-				},
-				Static,
-				PhysicalTranslation(Vec3::new(-half_goal, pitch_config.goal_height, -half_pitch_length)),
-			),
 
-		],
-	));
-}
- */
 fn flag_model(
 	pitch_models:PitchModels,
 	flag_material:Handle<StandardMaterial>,
@@ -687,7 +562,7 @@ fn build_pitch(
 			SoccerCollider{ 
 				shape: ColliderShape::Plane(PlaneTarget{ normal:Dir3::Y }),
 				restitution: PITCH_RESTITUTION,
-				filter: PitchAreaMask::ANY,
+				filter: PitchCollisionZone::ANY,
 			}
 			Transform::from_translation(Vec3::ZERO)
 			Static
@@ -697,7 +572,7 @@ fn build_pitch(
 			SoccerCollider{ 
 				shape: ColliderShape::Plane(PlaneTarget { normal: Dir3::NEG_X }),
 				restitution: WALL_RESTITUTION,
-				filter: PitchAreaMask::ANY,
+				filter: PitchCollisionZone::ANY,
 			}
 			Static
 			PhysicalTranslation(Vec3::new(half_total_width, 0., 0.))
@@ -706,7 +581,7 @@ fn build_pitch(
 			SoccerCollider{ 
 				shape: ColliderShape::Plane(PlaneTarget { normal: Dir3::X }),
 				restitution: WALL_RESTITUTION,
-				filter: PitchAreaMask::ANY,
+				filter: PitchCollisionZone::ANY,
 			}
 			Static
 			PhysicalTranslation(Vec3::new(-half_total_width, 0., 0.))
@@ -715,7 +590,7 @@ fn build_pitch(
 			SoccerCollider{ 
 				shape: ColliderShape::Plane(PlaneTarget { normal: Dir3::Z }),
 				restitution: WALL_RESTITUTION,
-				filter: PitchAreaMask::NORTH_OUTSIDE_GOAL,
+				filter: PitchCollisionZone::NORTH_OUTSIDE_GOAL,
 			}
 			PhysicalTranslation(Vec3::new(0., 0., -half_total_length))
 			Static
@@ -724,7 +599,7 @@ fn build_pitch(
 			SoccerCollider{ 
 				shape: ColliderShape::Plane(PlaneTarget { normal: Dir3::NEG_Z }),
 				restitution: WALL_RESTITUTION,
-				filter: PitchAreaMask::SOUTH_OUTSIDE_GOAL,
+				filter: PitchCollisionZone::SOUTH_OUTSIDE_GOAL,
 			}
 			PhysicalTranslation(Vec3::new(0., 0., half_total_length))
 			Static
@@ -733,7 +608,7 @@ fn build_pitch(
 			SoccerCollider{
 				shape: ColliderShape::Plane(PlaneTarget { normal: Dir3::X}),
 				restitution: NET_RESTITUTION,
-				filter: PitchAreaMask::INSIDE_GOAL,
+				filter: PitchCollisionZone::INSIDE_GOAL,
 			}
 			Static
 			PhysicalTranslation(Vec3::new(-pitch_config.half_goal_width,0., 0.))
@@ -742,7 +617,7 @@ fn build_pitch(
 			SoccerCollider{
 				shape: ColliderShape::Plane(PlaneTarget { normal: Dir3::NEG_X}),
 				restitution: NET_RESTITUTION,
-				filter: PitchAreaMask::INSIDE_GOAL,
+				filter: PitchCollisionZone::INSIDE_GOAL,
 			}
 			Static
 			PhysicalTranslation(Vec3::new(pitch_config.half_goal_width,0., 0.))
@@ -751,7 +626,7 @@ fn build_pitch(
 			SoccerCollider{
 				shape: ColliderShape::Plane(PlaneTarget { normal: Dir3::NEG_X}),
 				restitution: NET_RESTITUTION,
-				filter: PitchAreaMask::OUTSIDE_GOAL,
+				filter: PitchCollisionZone::OUTSIDE_GOAL,
 			}
 			Static
 			PhysicalTranslation(Vec3::new(-pitch_config.half_goal_width,0., 0.))
@@ -760,7 +635,7 @@ fn build_pitch(
 			SoccerCollider{
 				shape: ColliderShape::Plane(PlaneTarget { normal: Dir3::X}),
 				restitution: NET_RESTITUTION,
-				filter: PitchAreaMask::OUTSIDE_GOAL,
+				filter: PitchCollisionZone::OUTSIDE_GOAL,
 			}
 			Static
 			PhysicalTranslation(Vec3::new(pitch_config.half_goal_width,0., 0.))
@@ -770,18 +645,70 @@ fn build_pitch(
 			SoccerCollider{
 				shape: ColliderShape::Plane(PlaneTarget { normal: Dir3::NEG_Y }),
 				restitution: NET_RESTITUTION,
-				filter: PitchAreaMask::INSIDE_GOAL,
+				filter: PitchCollisionZone::INSIDE_GOAL,
 			}
 			Static
 			PhysicalTranslation(Vec3::new(0.,pitch_config.goal_height,0.))
 			--
-			{ pitch_side_colliders(pitch_config.clone(), 1., PitchAreaMask::SOUTH) }	
+			#South_Goal_Sensor
+			SoccerCollider{ 
+				shape: ColliderShape::Plane(PlaneTarget { normal:  Dir3::NEG_Z }),
+				restitution: 0.,
+				filter: PitchCollisionZone::SOUTH,
+			}
+			ColliderType::Sensor
+			Static
+			PhysicalTranslation(Vec3::new(0.,0.,pitch_config.half_length + BALL_RADIUS + pitch_config.line_width))
+			SensorType::End
+			--			
+			#North_Goal_Sensor
+			SoccerCollider{ 
+				shape: ColliderShape::Plane(PlaneTarget { normal:  Dir3::Z }),
+				restitution: 0.,
+				filter: PitchCollisionZone::NORTH,
+			}
+			ColliderType::Sensor
+			Static
+			SensorType::End
+			PhysicalTranslation(Vec3::new(0.,0.,-pitch_config.half_length - BALL_RADIUS - pitch_config.line_width))
+			--			
+			#East_Side_Sensor
+			SoccerCollider{ 
+				shape: ColliderShape::Plane(PlaneTarget { normal:  Dir3::NEG_X }),
+				restitution: 0.,
+				filter: PitchCollisionZone::ANY,
+			}
+			ColliderType::Sensor
+			Static
+			SensorType::Side
+			PhysicalTranslation(Vec3::new(pitch_config.half_width + BALL_RADIUS + pitch_config.line_width,0.,0.))
+			--			
+			#West_Side_Sensor
+			SoccerCollider{ 
+				shape: ColliderShape::Plane(PlaneTarget { normal:  Dir3::X }),
+				restitution: 0.,
+				filter: PitchCollisionZone::ANY,
+			}
+			ColliderType::Sensor
+			Static
+			SensorType::Side
+			PhysicalTranslation(Vec3::new(-pitch_config.half_width - BALL_RADIUS - pitch_config.line_width,0.,0.))
 			--
-			{ pitch_side_colliders(pitch_config.clone(), -1., PitchAreaMask::NORTH) }	
+			{ pitch_side_colliders(pitch_config.clone(), 1., PitchCollisionZone::SOUTH) }	
+			--
+			{ pitch_side_colliders(pitch_config.clone(), -1., PitchCollisionZone::NORTH) }	
 		
 
 		]
 	}
+}
+
+
+#[derive(Component, Clone, Copy, Default)]
+pub enum SensorType{
+	#[default]
+	Side,
+	End,
 }
 
 
@@ -811,7 +738,7 @@ fn spawn_pitch(
 	let flag_material = make_flag_material(kit_gen, pitch_models.clone());
 	commands.spawn_scene(build_pitch(pitch_assets.clone(),pitch_models.clone(), pitch_config.clone(), flag_material));
 
-info!("test: {}", PitchAreaMask::SOUTH.combine(PitchAreaMask::OUTSIDE_GOAL).combine(PitchAreaMask::ANY).contains(PitchAreaMask::SOUTH.combine(PitchAreaMask::INSIDE_GOAL)));
+info!("test: {}", PitchCollisionZone::SOUTH.combine(PitchCollisionZone::OUTSIDE_GOAL).combine(PitchCollisionZone::ANY).contains(PitchCollisionZone::SOUTH.combine(PitchCollisionZone::INSIDE_GOAL)));
 }
 
 #[derive(Resource, Clone)]
@@ -834,6 +761,37 @@ pub struct PitchConfiguration{
 	penalty_arc_radius:f32,
 	pole_radius:f32,
 }
+
+impl PitchConfiguration {
+	
+	pub fn get_pitch_collision_zone(&self, position:Vec3)->PitchCollisionZone{
+		let mut filter = PitchCollisionZone::ANY; 
+		if position.z.abs() > self.half_length *0.75{
+			filter = filter.combine(
+				if position.z.signum() == 1.0 {
+					PitchCollisionZone::SOUTH 
+				} else { 
+					PitchCollisionZone::NORTH
+				});
+			//out of play?
+			if position.z.abs() > self.half_length{
+				//in goal???
+				filter = filter.combine(
+					if position.x.abs() < self.half_goal_width 
+					&& position.y < self.goal_height 
+					&& position.z.abs() < self.half_length + self.goal_depth{
+						PitchCollisionZone::INSIDE_GOAL
+					}
+					else{
+						PitchCollisionZone::OUTSIDE_GOAL
+					}
+				);
+			}
+		}
+		filter
+	}
+}
+
 
 impl Default for PitchConfiguration{
 	fn default() -> Self {

@@ -1,7 +1,7 @@
 use bevy::{camera::visibility::NoFrustumCulling, math::FloatPow, prelude::*, time::Stopwatch};
 use std::f32::consts::PI;
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, constants::*, game_control::{ActiveControl, MovementControl}, game_schedule::GameSchedule, game_state::GameState, helpers::*, interpolation::{PhysicalRotation, PhysicalTranslation}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget, Velocity}, pitch::PitchConfiguration, player::{Player, PlayerState}, shared::{PitchAreaMask, SoccerCollider}};
+use crate::{assets::AssetLoadState, constants::*, game_control::{ActiveControl, MovementControl}, game_schedule::GameSchedule, game_state::GameState, helpers::*, motion::{PhysicalRotation, PhysicalTranslation, Velocity}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget}, pitch::{PitchCollisionZone, PitchConfiguration}, player::{Player, PlayerState, BallInteractionMessage}, shared::{ColliderType, SoccerCollider}};
 
 const BALL_SCALE: f32 = 0.5;
 pub const BALL_RADIUS:f32 = 0.25 * BALL_SCALE;
@@ -9,27 +9,20 @@ pub const BALL_GROUND_LEVEL:f32 = BALL_RADIUS + EPSILON_TOLERANCE ;
 const GRAVITY_DOWN:f32 = 9.8;
 const GRAVITY:Vec3 = Vec3::new(0., -GRAVITY_DOWN, 0.);
 const BALL_RESTITUTION:f32 = 0.8;
-
 //air damping
 const DRAG_COEFFICIENT:f32 = 0.30;
 const AIR_DENSITY:f32 = 1.225;
 const BALL_CROSS_SECTION_AREA:f32 = PI * BALL_RADIUS * BALL_RADIUS; //0.038;
 const AIR_DAMPING:f32 = 0.5 * AIR_DENSITY * BALL_CROSS_SECTION_AREA * DRAG_COEFFICIENT;
 
-//ground damping
-//const ROLLING_RESISTANCE:f32 = 0.08;
 const ROLLING_RESISTANCE:f32 = 0.2;
 const BALL_MASS:f32 = 0.43;
 //don't need ball mass!
 //const GROUND_DECELERATION:f32 = (BALL_MASS * GRAVITY * ROLLING_RESISTANCE) / BALL_MASS;  
 const GROUND_DECELERATION:f32 = GRAVITY_DOWN * ROLLING_RESISTANCE;  
-
 pub const MAX_DRIBBLE_HEIGHT:f32 = 1.;
-pub const MAX_INTERACTION_DISTANCE:f32 = 2.;
-pub const MAX_INTERACTION_DISTANCE_SQUARED:f32 = MAX_INTERACTION_DISTANCE * MAX_INTERACTION_DISTANCE;
-
-pub const SPEED_MATCH_FACTOR:f32 = 16.0;
-pub const DISTANCE_MATCH_FACTPR:f32 = 150.0;
+pub const SPEED_MATCH_FACTOR:f32 = 26.0;
+pub const DISTANCE_MATCH_FACTPR:f32 = 190.0;
 
 pub struct BallPlugin;
 impl Plugin for BallPlugin{
@@ -39,9 +32,11 @@ impl Plugin for BallPlugin{
 				LoadingStateConfig::new(AssetLoadState::Startup)
 				.load_collection::<BallAssets>(),
 			)
+			.add_message::<PitchSensorMessage>()
 			.add_systems(OnEnter(GameState::Playing), spawn_ball)
 			.add_systems(FixedUpdate, (after_touch, dribble, physics).chain().in_set(GameSchedule::PreMovement))
 			.add_systems(FixedUpdate, (do_movement, do_rotation).chain().in_set(GameSchedule::Movement))
+
 
 
 			//.add_systems(Update, (debug_ball_position).run_if(on_timer(Duration::from_secs_f32(0.5))))
@@ -74,6 +69,11 @@ pub struct Rotation{
 	speed:f32,
 }
 
+#[derive(Message)]
+pub struct PitchSensorMessage{
+	pub entity:Entity, 
+	pub location:Vec3,
+}
 
 /*
 fn debug_ball_position(
@@ -99,7 +99,7 @@ fn spawn_ball(
 		SoccerCollider{ 
 			shape: ColliderShape::Sphere( SphereTarget{ radius: BALL_RADIUS }),
 			restitution:BALL_RESTITUTION,
-			filter: PitchAreaMask::ANY,
+			filter: PitchCollisionZone::ANY,
 		},
 		Velocity{ direction: Dir3::X, speed:7.4 },
 		PhysicalTranslation(Vec3::new(-30.,10. ,0.)),
@@ -107,10 +107,17 @@ fn spawn_ball(
 		Rotation { axis: Vec3::X, speed: 0. },
 		NoFrustumCulling,
 		MovementControl{ direction: Vec2::ZERO, kick:false, kick_timer:Stopwatch::new() },
-	));
+	)).observe(add_aftertouch);
 }
 
-
+fn add_aftertouch(
+	event:On<Add<AfterTouch>>,
+	mut ball_query:Query<&mut MovementControl>
+){
+	if let Ok(mut movement) = ball_query.get_mut(event.entity){
+		movement.direction = Vec2::ZERO;
+	}
+}
 
 #[derive(Debug, Copy, Clone)]
 struct ControlCandidate{
@@ -247,8 +254,11 @@ fn do_movement(
 	mut commands:Commands,
 	ball:Single<(Entity, &mut PhysicalTranslation, &mut Velocity, &Ball)>,
 	colliders:Query<(Entity, &SoccerCollider, &PhysicalTranslation, Option<&Velocity>, &Name), Without<Ball>>,
+	collider_type_query:Query<&ColliderType>,
 	time:Res<Time<Fixed>>,
 	pitch_config:Res<PitchConfiguration>,
+	mut pitch_sensor_writer:MessageWriter<PitchSensorMessage>,
+	mut ball_interaction_writer:MessageWriter<BallInteractionMessage>,
 ){
 	let (ball_entity, mut translation, mut ball_velocity, ball) = ball.into_inner();
 	let ball_translation = translation.0;
@@ -258,32 +268,7 @@ fn do_movement(
 	let mut delta = time.delta_secs();
 
 	while delta > 0. && collision_count < 3 {
-		let mut filter = PitchAreaMask::ANY; 
-		//decide pitch position
-		//end zone?
-		if ball_movement.origin.z.abs() > pitch_config.half_length *0.75{
-			filter = filter.combine(
-				if ball_movement.origin.z.signum() == 1.0 {
-				 	PitchAreaMask::SOUTH 
-				} else { 
-					PitchAreaMask::NORTH
-				});
-			//out of play?
-			if ball_movement.origin.z.abs() > pitch_config.half_length{
-				//in goal???
-				filter = filter.combine(
-					if ball_movement.origin.x.abs() < pitch_config.half_goal_width 
-					&& ball_movement.origin.y < pitch_config.goal_height 
-					&& ball_movement.origin.z.abs() < pitch_config.half_length + pitch_config.goal_depth{
-						PitchAreaMask::INSIDE_GOAL
-					}
-					else{
-						PitchAreaMask::OUTSIDE_GOAL
-					}
-				);
-			}
-		}
-
+		let  filter = pitch_config.get_pitch_collision_zone(ball_movement.origin);
 		let sphere_sweep = SphereSweep{ 
 			start: ball_translation, 
 			movement: ball_movement,
@@ -310,8 +295,9 @@ fn do_movement(
  
 			if collider.broad_phase(&target_movement, &sphere_sweep)
 				&& let Some(hit) = collider.narrow_phase( &target_movement, entity, &sphere_sweep){
-
-			info!("collided with {}", name);
+				
+				
+			info!("Collision {}", name);
 				if nearest.is_none() || hit.time < nearest.unwrap().time{
 					nearest = Some(hit);
 					restitution = collider.restitution;
@@ -326,24 +312,53 @@ fn do_movement(
 			collision_count += 1;
 			//collision!
 			if collision_count > 1{
-			info!("Collision count {}", collision_count);
+				info!("Collision count {}", collision_count);
 			}
 			let time_since_last = delta * collision.time;
 			delta -= time_since_last;
 			time_offset += time_since_last;
-			let collision_point_shifted = collision.point + collision.normal * EPSILON_TOLERANCE;
 
-			translation.0  = collision_point_shifted;
-	
-			let ball_v = ball_velocity.to_vec3();
-			let approach_v = ball_v - target_velocity;
-			let normal_vec:Vec3 = collision.normal.into();
-			let approach_speed = approach_v.dot(normal_vec).min(0.);
-				
-			let next_ball_vel = ball_v - (1.0 + restitution) * approach_speed * normal_vec;
-			//info!("bounce! {}", restitution);
-			*ball_velocity = Velocity::from_vec3(next_ball_vel).unwrap_or(Velocity::ZERO);
-			ball_movement = ball_velocity.as_frame_motion(collision_point_shifted, 0., delta);
+			let collision_adjustment = collision.normal * EPSILON_TOLERANCE;
+
+			//let collision_point_shifted = collision.point + collision.normal * EPSILON_TOLERANCE;
+			let bounce = {
+				if let Ok(collider_type) = collider_type_query.get(collision.entity){
+					match collider_type{
+						ColliderType::Tackle(connected) => {
+							if !connected{
+								translation.0 = collision.point + collision_adjustment;
+								ball_interaction_writer.write(BallInteractionMessage{ entity:collision.entity });
+								return;
+							}
+							true
+						}
+						ColliderType::Sensor => {
+							translation.0 = collision.point - collision_adjustment;
+							pitch_sensor_writer.write(PitchSensorMessage { entity: collision.entity, location: collision.point });
+							false
+						}
+						ColliderType::None => true,
+					}
+				}
+				else{
+					true
+				}
+			};
+			if bounce{
+
+				translation.0 = collision.point + collision_adjustment;
+
+
+				let ball_v = ball_velocity.to_vec3();
+				let approach_v = ball_v - target_velocity;
+				let normal_vec:Vec3 = collision.normal.into();
+				let approach_speed = approach_v.dot(normal_vec).min(0.);
+					
+				let next_ball_vel = ball_v - (1.0 + restitution) * approach_speed * normal_vec;
+				//info!("bounce! {}", restitution);
+				*ball_velocity = Velocity::from_vec3(next_ball_vel).unwrap_or(Velocity::ZERO);
+				ball_movement = ball_velocity.as_frame_motion(translation.0, 0., delta);
+			}
 		}
 		else{
 			translation.0 = ball_movement.final_position();
@@ -355,7 +370,3 @@ fn do_movement(
 	}
 	ball_velocity.direction = ball_movement.direction;
 }
-
-
-
-

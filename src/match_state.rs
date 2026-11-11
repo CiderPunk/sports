@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::{ball::Ball, game_state::GameState, interpolation::PhysicalTranslation, physics::Velocity, pitch::PitchConfiguration, team::{Team, TeamMember}};
+use crate::{ball::{Ball, PitchSensorMessage}, game_state::GameState, motion::*, pitch::{PitchConfiguration, SensorType}, team::{Team, TeamMember}};
  
 pub struct MatchStatePlugin;
 
@@ -10,8 +10,40 @@ impl Plugin for MatchStatePlugin{
 			.init_resource::<MatchState>()
 			.add_systems(OnEnter(GameState::Playing), init_match_state)
 			.add_systems(FixedPreUpdate, update_match_state)
+			.add_systems(FixedUpdate, handle_pitch_sensors)
 		;
 	}
+}
+
+
+fn handle_pitch_sensors(
+	mut pitch_sensor_reader:MessageReader<PitchSensorMessage>,
+	pitch_config:Res<PitchConfiguration>,
+	sensor_query:Query<&SensorType>,
+){
+	for sensor_message in pitch_sensor_reader.read(){
+		let Ok(sensor_type) = sensor_query.get(sensor_message.entity) else { continue; };
+		match sensor_type{
+			SensorType::Side => { 
+				info!("Throw in!"); 
+			}
+			SensorType::End =>  {
+				let loc = sensor_message.location;
+
+				if loc.x.abs() < pitch_config.half_goal_width && loc.y < pitch_config.goal_height{
+					info!("GOOOOOOAAAAALLLL!!!!");
+				}
+				else{
+					info!("Corner / goal kick");
+				}
+
+
+			}
+		}
+		
+	}
+
+
 }
 
 

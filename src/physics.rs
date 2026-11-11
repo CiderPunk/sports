@@ -22,44 +22,6 @@ impl FrameMotion {
 }
 
 
-#[derive(Component, Debug, Clone, Copy)]
-pub struct Velocity{
-	pub direction:Dir3,
-	pub speed:f32,
-}
-
-
-impl Default for Velocity{
-	fn default() -> Self {
-		Self{ direction: Dir3::Y, speed: 0.}
-	}
-}
-impl Velocity{
-	pub const ZERO: Self = Self{ direction: Dir3::Y, speed: 0.};
-
-	pub fn zero(&mut self) -> Velocity{
-		self.direction= Dir3::Y;
-		self.speed = 0.;
-		*self
-	}
-	pub fn to_vec3(&self) -> Vec3{
-		self.direction * self.speed
-	}
-
-	pub fn from_vec3(value:Vec3) -> Option<Self>{
-		let (direction, speed) = Dir3::new_and_length(value).ok()?;
-		Some(Self{direction, speed})
-	}
-
-	pub fn as_frame_motion(&self, origin: Vec3, offset_seconds:f32, frame_period:f32) -> FrameMotion{
-		FrameMotion{
-			origin: origin + (self.direction * self.speed * offset_seconds),
-			direction: self.direction,
-			distance: self.speed * frame_period,
-		}
-	}
-}
-
 #[derive( Debug, Clone, Default)]
 pub enum ColliderShape{
 	Cylinder(CylinderTarget), 

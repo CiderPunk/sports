@@ -16,6 +16,8 @@ impl Plugin for GameStatePlugin{
 				info!("Game Starting");
 				next_state.set(GameState::Playing );
 			});
+
+
 	}
 }
 
@@ -27,3 +29,4 @@ pub enum GameState {
   Initialize,
   Playing,
 }
+
