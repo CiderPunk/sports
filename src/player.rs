@@ -8,10 +8,13 @@ const PLAYER_SPEED: f32 = 10.;
 const PLAYER_SLIDE_SPEED: f32 = 18.;
 const PLAYER_SLIDE_RECOVERY_TIME: f32 = 0.5;
 const PLAYER_SLIDE_TIME:f32 = 0.6;
+const PLAYER_SLIDE_MIN_DISTANCE:f32 = 1.5;
 const PLAYER_TURN_SPEED: f32 = 3.0;
+
 const PLAYER_COLLISION_RADIUS:f32 = 0.5;
 const PLAYER_RESTITUTION:f32 = 0.6;
-const SLIDE_COLLIDER_RADIUS:f32 = 0.5;
+const SLIDE_COLLIDER_RADIUS:f32 = 0.75;
+const SLIDE_OFFSET_DISTANCE:f32 = 0.4;
 
 pub const PLAYER_HEIGHT:f32 = 1.8;
 //maximum button hold time for max power
@@ -337,7 +340,9 @@ fn plan_movement(
 		match &mut *state{
 			PlayerState::None => {
 				if movement.kick{	
-					if ball.0.distance_squared(translation.0) >4.{
+
+
+					if ball.0.distance_squared(translation.0) > PLAYER_SLIDE_MIN_DISTANCE * PLAYER_SLIDE_MIN_DISTANCE{
 						slide_message_writer.write(SlideMessage { entity, start:true });
 						*state = PlayerState::Slide(Timer::from_seconds(PLAYER_SLIDE_TIME, TimerMode::Once))
 					}
@@ -517,6 +522,7 @@ fn player_think(
 }
 
 
+
 fn slide_event_handler(
 	mut commands:Commands,
 	mut slide_message_reader:MessageReader<SlideMessage>,
@@ -540,13 +546,13 @@ fn slide_event_handler(
 					Name::new("slide collider"),
 					SoccerCollider{ shape: Sphere(SphereTarget{ radius: SLIDE_COLLIDER_RADIUS }), restitution: 0.1, filter: PitchCollisionZone::ANY },
 					PhysicalParent(message.entity),
-					ChildPhysicalOffset(Vec3::new(0., 0., 0.8)),
+					ChildPhysicalOffset(Vec3::new(0., 0.,SLIDE_OFFSET_DISTANCE)),
 					Gizmo{
 						handle:gizmo_handle.clone(),
 						..default()
 					},
 					Transform::from_scale(Vec3::splat(SLIDE_COLLIDER_RADIUS)),
-					ColliderType::Tackle,
+					ColliderType::Tackle(false),
 				));
 			},
 			false=>{ 
@@ -566,13 +572,23 @@ fn slide_event_handler(
 
 fn interaction_handler(
 	mut message_reader:MessageReader<BallInteractionMessage>,
-	collider_query:Query<&PhysicalParent, Without<Ball>>,
+	mut collider_query:Query<(&mut ColliderType, &PhysicalParent), Without<Ball>>,
 	player_query:Query<(&Velocity, &MovementControl), (Without<PhysicalParent>, Without<Ball>)>,
 	mut ball_velocity:Single<&mut Velocity, With<Ball>>,
 ){
 	for message in message_reader.read(){
-		let Ok(parent_entity) = collider_query.get(message.entity) else { continue;};
+		let Ok((mut collider_type, parent_entity)) = collider_query.get_mut(message.entity) else { continue;};
 		let Ok((velocity, movement)) = player_query.get(parent_entity.0) else{ continue;};
+
+		match &mut *collider_type{
+			ColliderType::None => (),
+			ColliderType::Tackle(connected) => { 
+
+				if *connected { continue; }
+				*connected = true },
+			ColliderType::Sensor => (),
+		}
+
 		//let shoot_dir = if movement.direction.length_squared() > EPSILON_TOLERANCE{
 		let movement_3d = Vec3::new(movement.direction.x, 0.0, movement.direction.y);
 		let shoot_dir = Dir3::new(movement_3d).unwrap_or(velocity.direction);
@@ -580,7 +596,7 @@ fn interaction_handler(
 		info!("Tackle! {}", power);
 
 		ball_velocity.direction = shoot_dir;
-		ball_velocity.speed = power * 60.0;
+		ball_velocity.speed = velocity.speed;
 	}
 }
 

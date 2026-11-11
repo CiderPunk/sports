@@ -22,7 +22,7 @@ const BALL_MASS:f32 = 0.43;
 const GROUND_DECELERATION:f32 = GRAVITY_DOWN * ROLLING_RESISTANCE;  
 pub const MAX_DRIBBLE_HEIGHT:f32 = 1.;
 pub const SPEED_MATCH_FACTOR:f32 = 26.0;
-pub const DISTANCE_MATCH_FACTPR:f32 = 250.0;
+pub const DISTANCE_MATCH_FACTPR:f32 = 190.0;
 
 pub struct BallPlugin;
 impl Plugin for BallPlugin{
@@ -324,10 +324,13 @@ fn do_movement(
 			let bounce = {
 				if let Ok(collider_type) = collider_type_query.get(collision.entity){
 					match collider_type{
-						ColliderType::Tackle => {
-							translation.0 = collision.point + collision_adjustment;
-							ball_interaction_writer.write(BallInteractionMessage{ entity:collision.entity });
-							return;
+						ColliderType::Tackle(connected) => {
+							if !connected{
+								translation.0 = collision.point + collision_adjustment;
+								ball_interaction_writer.write(BallInteractionMessage{ entity:collision.entity });
+								return;
+							}
+							true
 						}
 						ColliderType::Sensor => {
 							translation.0 = collision.point - collision_adjustment;

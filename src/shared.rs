@@ -8,6 +8,6 @@ pub type SoccerCollider = Collider<PitchCollisionZone>;
 pub enum ColliderType{
 	#[default]
 	None,
-	Tackle,
+	Tackle(bool),
 	Sensor,
 }
