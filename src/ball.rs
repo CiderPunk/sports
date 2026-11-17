@@ -1,7 +1,7 @@
 use bevy::{camera::visibility::NoFrustumCulling, math::FloatPow, prelude::*, time::Stopwatch};
 use std::f32::consts::PI;
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, constants::*, game_control::{ActiveControl, MovementControl}, game_schedule::GameSchedule, game_state::GameState, helpers::*, motion::{PhysicalRotation, PhysicalTranslation, Velocity}, physics::{Collidable, Collider, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget}, pitch::{PitchCollisionZone, PitchConfiguration}, player::{Player, PlayerState, BallInteractionMessage}, shared::{ColliderType, SoccerCollider}};
+use crate::{assets::AssetLoadState, constants::*, game_control::{ActiveControl, MovementControl}, game_schedule::GameSchedule, game_state::GameState, helpers::*, motion::{PhysicalRotation, PhysicalTranslation, Velocity}, physics::{Collidable, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget}, player::{BallInteractionMessage, Player, PlayerState}, shared::{ColliderType, PitchCollisionZone, PitchConfiguration, Restitution, SoccerCollider}};
 
 const BALL_SCALE: f32 = 0.5;
 pub const BALL_RADIUS:f32 = 0.25 * BALL_SCALE;
@@ -95,11 +95,10 @@ fn spawn_ball(
 		Ball{
 			possession: None,
 		},
-		SoccerCollider{ 
-			shape: ColliderShape::Sphere( SphereTarget{ radius: BALL_RADIUS }),
-			restitution:BALL_RESTITUTION,
-			filter: PitchCollisionZone::ANY,
-		},
+		SoccerCollider,
+		ColliderShape::Sphere( SphereTarget{ radius: BALL_RADIUS }),
+		Restitution(BALL_RESTITUTION),
+		PitchCollisionZone::ANY,
 		Velocity{ direction: Dir3::X, speed:7.4 },
 		PhysicalTranslation(Vec3::new(-30.,10. ,0.)),
 		PhysicalRotation(Quat::IDENTITY),

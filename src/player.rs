@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use std::{f32::consts::PI, time::Duration };
 use bevy::{gltf::GltfMesh, light::NotShadowCaster, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
-use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{AfterTouch, Ball}, constants::*, game_control::{ActiveControl, MovementControl}, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, kit::{KitConfiguration, KitGenerator}, match_state::{MatchState, PlayerSnapshot}, motion::{ChildPhysicalOffset, PhysicalChildren, PhysicalParent, PhysicalRotation, PhysicalTranslation, Velocity}, physics::{ColliderShape::{self, Sphere}, CylinderTarget, EPSILON_TOLERANCE, SphereTarget}, pitch::PitchCollisionZone, shared::{ColliderType, SoccerCollider}, team::{PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
+use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{AfterTouch, Ball}, constants::*, game_control::{ActiveControl, MovementControl}, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, kit::{KitConfiguration, KitGenerator}, match_state::{MatchState, PlayerSnapshot}, motion::{ChildPhysicalOffset, PhysicalChildren, PhysicalParent, PhysicalRotation, PhysicalTranslation, Velocity}, physics::{ColliderShape::{self, Sphere}, CylinderTarget, EPSILON_TOLERANCE, SphereTarget}, shared::{ColliderType, PitchCollisionZone, Restitution, SoccerCollider}, team::{PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_SLIDE_SPEED: f32 = 18.;
@@ -214,28 +214,34 @@ fn spawn_players(
 			};
 
 			let id = commands.spawn((
-				kit,
-				Player{ ..default() },
-				MovementControl{ direction: Vec2::ZERO, kick_timer: Stopwatch::new(), kick:false },
-				WorldAssetRoot(player_assets.player_scene.clone()),
-				Transform::default(),
-				PhysicalTranslation(Vec3::new((i as f32 * 2.) - 0.75, 0., z_pos)),
-				Velocity{ direction: Dir3::Y, speed: 0. },
-				PhysicalRotation(Quat::from_rotation_y(facing)),
-				Name::new("Player"),
-				SoccerCollider{ 
-					shape: ColliderShape::Cylinder( CylinderTarget{ 
+				(
+					Player{ ..default() },
+					Name::new("Player"),
+					kit,
+					WorldAssetRoot(player_assets.player_scene.clone()),
+					TeamMember(team_entity),
+					Thinker,
+					PlayerState::None,
+				),
+				(
+					MovementControl{ direction: Vec2::ZERO, kick_timer: Stopwatch::new(), kick:false },
+					Transform::default(),
+					PhysicalTranslation(Vec3::new((i as f32 * 2.) - 0.75, 0., z_pos)),
+					Velocity{ direction: Dir3::Y, speed: 0. },
+					PhysicalRotation(Quat::from_rotation_y(facing)),
+				),
+				(
+					SoccerCollider,
+					ColliderShape::Cylinder( CylinderTarget{ 
 						direction: Dir3::Y, 
 						radius: PLAYER_COLLISION_RADIUS, 
-						length: PLAYER_HEIGHT
+						length: PLAYER_HEIGHT,
 					}),
-					restitution:PLAYER_RESTITUTION,
-					filter: PitchCollisionZone::ANY,
-				},
-				Position(POSITIONS[i]),
-				TeamMember(team_entity),
-				Thinker,
-				PlayerState::None,
+					//Restitution(PLAYER_RESTITUTION),
+					PitchCollisionZone::ANY,
+					Position(POSITIONS[i]),
+				)
+				
 			))
 			.observe(init_player_animations)
 			.observe(init_player_skin)
@@ -553,7 +559,10 @@ fn slide_event_handler(
 				animation_manager.set_animation(message.entity, PlayerAnim::Slide.into(), 0.2, 1.0, false);
 				commands.spawn((
 					Name::new("slide collider"),
-					SoccerCollider{ shape: Sphere(SphereTarget{ radius: SLIDE_COLLIDER_RADIUS }), restitution: 0.1, filter: PitchCollisionZone::ANY },
+					SoccerCollider,
+					ColliderShape::Sphere(SphereTarget{ radius: SLIDE_COLLIDER_RADIUS }), 
+					Restitution(0.1), 
+					PitchCollisionZone::ANY,
 					PhysicalParent(message.entity),
 					ChildPhysicalOffset(Vec3::new(0., 0.,SLIDE_OFFSET_DISTANCE)),
 					Gizmo{
