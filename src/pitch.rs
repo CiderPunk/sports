@@ -25,7 +25,7 @@ impl Plugin for PitchPlugin{
 				.load_collection::<PitchAssets>(),
 			)			
 			.add_systems(OnEnter(GameState::Initialize), (modify_materials, init_pitch_models))
-			.add_systems(OnEnter(GameState::Playing), (spawn_pitch));
+			.add_systems(OnEnter(GameState::Playing), spawn_pitch);
 
 	}
 }
@@ -302,7 +302,7 @@ fn pitch_side_colliders(
 			})
 		Restitution(POLE_RESTITUTION)
 		end_filter
-		PhysicalTranslation(Vec3::new(pitch_config.half_goal_width, 0., (end * pitch_config.half_length)))
+		PhysicalTranslation(Vec3::new(pitch_config.half_goal_width, 0., end * pitch_config.half_length))
 		Static
 		--
 		#Left_Post
@@ -568,7 +568,7 @@ fn build_pitch(
 			--
 			#Inside_Goal_Left
 			SoccerCollider
-			ColliderShape::Plane(PlaneTarget { normal: Dir3::X}),
+			ColliderShape::Plane(PlaneTarget { normal: Dir3::X})
 			Restitution(WALL_RESTITUTION)
 			PitchCollisionZone::INSIDE_GOAL
 			Static
@@ -636,7 +636,7 @@ fn build_pitch(
 			--			
 			#West_Side_Sensor
 			SoccerCollider
-			ColliderShape::Plane(PlaneTarget { normal:  Dir3::X }),
+			ColliderShape::Plane(PlaneTarget { normal:  Dir3::X })
 			PitchCollisionZone::ANY
 			ColliderType::Sensor
 			Static

@@ -20,12 +20,13 @@ impl Default for Restitution{
 	}
 }
 
-#[derive(Component, Clone, Copy, Default)]
+#[derive(Component, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ColliderType{
 	#[default]
 	None,
 	Tackle(bool),
 	Sensor,
+	Player,
 }
 
 

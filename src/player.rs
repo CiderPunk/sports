@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use std::{f32::consts::PI, time::Duration };
 use bevy::{gltf::GltfMesh, light::NotShadowCaster, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
-use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{AfterTouch, Ball}, constants::*, game_control::{ActiveControl, MovementControl}, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, kit::{KitConfiguration, KitGenerator}, match_state::{MatchState, PlayerSnapshot}, motion::{ChildPhysicalOffset, PhysicalChildren, PhysicalParent, PhysicalRotation, PhysicalTranslation, Velocity}, physics::{ColliderShape::{self, Sphere}, CylinderTarget, EPSILON_TOLERANCE, SphereTarget}, shared::{ColliderType, PitchCollisionZone, Restitution, SoccerCollider}, team::{PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
+use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{AfterTouch, BALL_GROUND_LEVEL, Ball}, constants::*, game_control::{ActiveControl, MovementControl}, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, kit::{KitConfiguration, KitGenerator}, match_state::{MatchState, PlayerSnapshot}, motion::{ChildPhysicalOffset, PhysicalChildren, PhysicalParent, PhysicalRotation, PhysicalTranslation, Velocity}, physics::{ColliderShape::self, CylinderTarget, EPSILON_TOLERANCE, SphereTarget}, shared::{ColliderType, PitchCollisionZone, Restitution, SoccerCollider}, team::{PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_SLIDE_SPEED: f32 = 18.;
@@ -23,7 +23,6 @@ const KICK_RECOVERY_TIME:f32 = 0.3;
 const PASS_THRESHOLD:f32 = 0.2;
 const MAX_PASS_DISTANCE:f32 = 30.;
 const MAX_PASS_DEFLECTION:f32 = PI * 0.125;
-const PASS_SPEED:f32 = 20.;
 
 pub struct PlayerPlugin;
 
@@ -237,6 +236,7 @@ fn spawn_players(
 						radius: PLAYER_COLLISION_RADIUS, 
 						length: PLAYER_HEIGHT,
 					}),
+					ColliderType::Player,
 					//Restitution(PLAYER_RESTITUTION),
 					PitchCollisionZone::ANY,
 					Position(POSITIONS[i]),
@@ -564,7 +564,7 @@ fn slide_event_handler(
 					Restitution(0.1), 
 					PitchCollisionZone::ANY,
 					PhysicalParent(message.entity),
-					ChildPhysicalOffset(Vec3::new(0., 0.,SLIDE_OFFSET_DISTANCE)),
+					ChildPhysicalOffset(Vec3::new(0., BALL_GROUND_LEVEL ,SLIDE_OFFSET_DISTANCE)),
 					Gizmo{
 						handle:gizmo_handle.clone(),
 						..default()
@@ -605,6 +605,7 @@ fn interaction_handler(
 				if *connected { continue; }
 				*connected = true },
 			ColliderType::Sensor => (),
+			ColliderType::Player => {},
 		}
 
 		//let shoot_dir = if movement.direction.length_squared() > EPSILON_TOLERANCE{

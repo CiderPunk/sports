@@ -86,11 +86,13 @@ impl Default for Velocity{
 impl Velocity{
 	pub const ZERO: Self = Self{ direction: Dir3::Y, speed: 0.};
 
+	/*
 	pub fn zero(&mut self) -> Velocity{
 		self.direction= Dir3::Y;
 		self.speed = 0.;
 		*self
 	}
+	 */
 	pub fn to_vec3(&self) -> Vec3{
 		self.direction * self.speed
 	}
