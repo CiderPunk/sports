@@ -22,7 +22,7 @@ impl FrameMotion {
 }
 
 
-#[derive( Debug, Clone, Default)]
+#[derive(Component, Debug, Clone, Default)]
 pub enum ColliderShape{
 	Cylinder(CylinderTarget), 
 	Sphere(SphereTarget),
@@ -31,29 +31,6 @@ pub enum ColliderShape{
 	None,
 }
 
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct ColliderFilter(pub u32);
-
-#[derive(Component, Debug, Clone, Default)]
-#[require(PhysicalProperties)]
-pub struct Collider<M:Default + Copy = ColliderFilter>{
-	pub	shape:ColliderShape,
-	pub restitution:f32,
-	pub filter: M,
-}
-
-#[derive(Component, Debug, Clone)]
-pub struct  PhysicalProperties{
-	pub restitution:f32,
-	pub mass:f32,
-}
-
-impl Default for PhysicalProperties{
-	fn default() -> Self {
-		Self{ restitution: 0.8, mass: 10000. }
-	}
-}
 
 pub struct SphereSweep {
 	pub start: Vec3,
@@ -73,9 +50,9 @@ pub trait Collidable {
 	fn narrow_phase(&self, movement:&FrameMotion, entity:Entity, sphere: &SphereSweep) -> Option<HitResult>;
 }
 
-impl <M:Default + Copy> Collidable for Collider<M>{
+impl Collidable for ColliderShape{
 		fn broad_phase(&self, movement:&FrameMotion, sphere: &SphereSweep) -> bool {
-			match &self.shape{
+			match self{
 				ColliderShape::Cylinder(cylinder_target) => cylinder_target.broad_phase(movement, sphere),
 				ColliderShape::Sphere(sphere_target) => sphere_target.broad_phase(movement, sphere),
 				ColliderShape::Plane(plane_target) => plane_target.broad_phase(movement, sphere),
@@ -84,7 +61,7 @@ impl <M:Default + Copy> Collidable for Collider<M>{
 		}
 
 		fn narrow_phase(&self, movement:&FrameMotion, entity:Entity, sphere: &SphereSweep) -> Option<HitResult> {
-			match &self.shape{
+			match self{
 				ColliderShape::Cylinder(cylinder_target) => cylinder_target.narrow_phase(movement, entity,sphere),
 				ColliderShape::Sphere(sphere_target) => sphere_target.narrow_phase(movement,entity, sphere),
 				ColliderShape::Plane(plane_target) => plane_target.narrow_phase(movement,entity, sphere),
@@ -93,7 +70,7 @@ impl <M:Default + Copy> Collidable for Collider<M>{
 		}
 }
 
-#[derive( Debug, Clone)]
+#[derive( Debug,Copy,  Clone)]
 pub struct CylinderTarget{
 	pub direction:Dir3, // from base to tip, normalized
 	pub radius:f32,
@@ -185,7 +162,7 @@ impl Collidable for CylinderTarget{
 	}
 }
 
-#[derive( Debug, Clone)]
+#[derive( Debug, Copy,  Clone)]
 pub struct PlaneTarget{
 	pub normal:Dir3,
 }
@@ -228,7 +205,7 @@ impl Collidable for PlaneTarget{
 	}
 }
 
-#[derive( Debug, Clone)]
+#[derive( Debug, Copy, Clone)]
 pub struct SphereTarget{
 	pub radius:f32,
 }

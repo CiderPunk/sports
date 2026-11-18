@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::{ball::{Ball, PitchSensorMessage}, game_state::GameState, motion::*, pitch::{PitchConfiguration, SensorType}, team::{Team, TeamMember}};
+use crate::{ball::{Ball, PitchSensorMessage}, game_state::GameState, motion::*, pitch::SensorType, shared::PitchConfiguration, team::{Team, TeamMember}};
  
 pub struct MatchStatePlugin;
 

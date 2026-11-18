@@ -9,3 +9,6 @@ pub const PLAYER_MAX_CONTROL_DISTANCE:f32 = 0.75;
 
 pub const SPEED_MATCH_FACTOR:f32 = 26.0;
 pub const DISTANCE_MATCH_FACTOR:f32 = 190.0;
+
+pub const PASS_SPEED:f32 = 20.;
+pub const MAX_DRIBBLE_HEIGHT:f32 = 1.;

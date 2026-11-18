@@ -30,7 +30,7 @@ impl KitColour{
 	pub fn from_srgba(colour:Srgba) -> Self{
 		Self(colour.to_u8_array())
 	}
-	pub fn to_srgba(self) -> Srgba{
+	pub fn _to_srgba(self) -> Srgba{
 		Srgba::from_u8_array(self.0)
 	}
 }
