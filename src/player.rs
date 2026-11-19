@@ -39,7 +39,7 @@ impl Plugin for PlayerPlugin{
 			.add_message::<BallInteractionMessage>()
 			.add_systems(OnEnter(GameState::Initialize), (init_markers, init_player, spawn_players).chain())
 			.add_systems(Update, (update_active_marker_position, animate_player))
-			.add_systems(FixedUpdate,  (plan_movement, (kick_event_handler, slide_event_handler) ).chain().in_set(GameSchedule::PreMovement))
+			.add_systems(FixedUpdate,  (plan_movement, (kick_event_handler, slide_event_handler, ball_control) ).chain().in_set(GameSchedule::PreMovement))
 			.add_systems(FixedUpdate, (switch_active_player, player_think, do_movement).in_set(GameSchedule::Movement))
 			.add_systems(Update, (check_active_player).run_if(on_timer(Duration::from_secs_f32(0.2))))
 			.add_systems(FixedUpdate, interaction_handler.in_set(GameSchedule::PostMovement))
@@ -617,6 +617,64 @@ fn interaction_handler(
 		ball_velocity.direction = shoot_dir;
 		ball_velocity.speed = velocity.speed;
 	}
+}
+
+fn ball_control(
+	ball:Single<( &mut Velocity, &PhysicalTranslation), With<Ball>>,
+	players:Query<(&Player, &PhysicalTranslation, &PhysicalRotation, &Velocity,  &PlayerState), Without<Ball>>,
+	mut gizmos: Gizmos,
+	time:Res<Time<Fixed>>,
+){
+	let ( mut ball_velocity,  ball_translation) = ball.into_inner();
+	if ball_translation.0.y > MAX_DRIBBLE_HEIGHT{ return; } //no dribbling high balls!
+
+	let ball_vec = ball_velocity.to_vec3();
+	let mut total_force = Vec3::ZERO;
+
+	for (player, translation, rotation, velocity, state) in players{
+		
+		match state{
+				PlayerState::None => (),
+				PlayerState::KickWindup(_) => (),
+				PlayerState::KickRecover(_) => continue,
+				PlayerState::Slide(_) => continue,
+				PlayerState::SlideRecover(_) => continue,
+		};
+		let Some(to_control_point) = to_nearest_control_point(ball_translation.0, translation.0, rotation.0) else{
+			continue;
+		};
+		gizmos.arrow(ball_translation.0, ball_translation.0 - to_control_point, bevy::color::palettes::css::RED);
+
+		let dist_squared = to_control_point.length_squared();
+		if dist_squared > PLAYER_MAX_CONTROL_DISTANCE * PLAYER_MAX_CONTROL_DISTANCE{
+			continue;
+		}
+		//distance from ball to player control spot
+		let dist = dist_squared.sqrt();
+		let t = dist / PLAYER_MAX_CONTROL_DISTANCE;
+		let inverted = 1. -t;
+		//distance factor is a smooth=step calculated effectiveness of player control
+		let distance_factor = inverted * inverted  * (3. - (2. * inverted));
+
+		let vel_diff = velocity.to_vec3() - ball_vec;
+		//effect of player dribnling the ball
+		let speed_match_force = vel_diff * player.speed_match_factor;			
+		//effect of player moving the ball to optimal control position
+		let control_force = -to_control_point * player.distance_match_factor;
+		//total force modulated by distance factor
+		let combined_force = (control_force + speed_match_force) * distance_factor;
+		//add top totallizer!
+		total_force+= combined_force;
+		//lets draw it for funzies
+		gizmos.arrow(ball_translation.0, ball_translation.0 + combined_force, bevy::color::palettes::css::BLUE);
+		
+	}
+	//ball.possession = Some(candidate.entity);
+	//cal total change
+	let ball_vec = ball_velocity.to_vec3() + time.delta_secs() * total_force;
+	//update ball velocity
+	*ball_velocity = Velocity::from_vec3(ball_vec).unwrap_or(Velocity::ZERO);	
+
 }
 
 

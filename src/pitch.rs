@@ -9,7 +9,7 @@ const LINE_FLOAT_HEIGHT: f32 = 0.05;
 const PITCH_RESTITUTION:f32 = 0.65;
 const WALL_RESTITUTION:f32 = 0.9;
 const POLE_RESTITUTION:f32 = 0.9;
-const NET_RESTITUTION:f32 = 0.1;
+const NET_RESTITUTION:f32 = 0.02;
 const GOAL_BACK_ANGLE:f32 = PI * (1. / 3.); //maybe
 pub struct PitchPlugin;
 impl Plugin for PitchPlugin{
@@ -334,7 +334,7 @@ fn pitch_side_colliders(
 		#Goal_Back
 		SoccerCollider
 		ColliderShape::Plane(PlaneTarget { normal: goal_back })
-		Restitution(POLE_RESTITUTION)
+		Restitution(NET_RESTITUTION)
 		inside_filter
 		Static
 		PhysicalTranslation(Vec3::new(0.,0., end * (pitch_config.half_length + pitch_config.goal_depth)))

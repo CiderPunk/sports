@@ -33,7 +33,8 @@ impl Plugin for BallPlugin{
 			)
 			.add_message::<PitchSensorMessage>()
 			.add_systems(OnEnter(GameState::Playing), spawn_ball)
-			.add_systems(FixedUpdate, (after_touch, dribble, physics).chain().in_set(GameSchedule::PreMovement))
+			.add_systems(FixedUpdate, (after_touch, //dribble, 
+				physics).chain().in_set(GameSchedule::PreMovement))
 			.add_systems(FixedUpdate, (do_movement, do_rotation).chain().in_set(GameSchedule::Movement))
 
 
@@ -268,6 +269,7 @@ fn do_movement(
 	let mut collision_count:usize = 0;
 	let mut delta = time.delta_secs();
 
+	let mut sensors_collided:Vec<Entity> = vec![];
 	while delta > 0. && collision_count < 3 {
 		let  area_filter = pitch_config.get_pitch_collision_zone(ball_movement.origin);
 		let sphere_sweep = SphereSweep{ 
@@ -284,8 +286,9 @@ fn do_movement(
 		//info!("pitch_mask {:?}", filter);
 
 		for (entity, shape, collider_type, pitch_area, restitution, translation, velocity, name) in colliders{
-			if ball.possession == Some(entity){ continue; }
-
+			if ball.possession == Some(entity) ||
+				sensors_collided.contains(&entity){ continue; }
+			
 			//info!("collision test {}", name);
 			if !area_filter.contains(*pitch_area) { 
 			 	continue; 
@@ -342,6 +345,7 @@ fn do_movement(
 							true
 						}
 						ColliderType::Sensor => {
+							sensors_collided.push(collision.entity);
 							translation.0 = collision.point - collision_adjustment;
 							pitch_sensor_writer.write(PitchSensorMessage { entity: collision.entity, location: collision.point });
 							false
