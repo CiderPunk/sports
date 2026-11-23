@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use std::{f32::consts::PI, time::Duration };
 use bevy::{gltf::GltfMesh, light::NotShadowCaster, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
-use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{AfterTouch, BALL_GROUND_LEVEL, Ball}, constants::*, game_control::{ActiveControl, MovementControl}, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, kit::{KitConfiguration, KitGenerator}, match_state::{MatchState, PlayerSnapshot}, motion::{ChildPhysicalOffset, PhysicalChildren, PhysicalParent, PhysicalRotation, PhysicalTranslation, Velocity}, physics::{ColliderShape::self, CylinderTarget, EPSILON_TOLERANCE, SphereTarget}, shared::{ColliderType, PitchCollisionZone, Restitution, SoccerCollider}, team::{PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
+use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{AfterTouch, BALL_GROUND_LEVEL, Ball}, constants::*, game_control::{ActiveControl, MovementControl}, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, kit::{KitConfiguration, KitGenerator}, match_state::{BallPressure, MatchState, PlayerSnapshot}, motion::{ChildPhysicalOffset, PhysicalChildren, PhysicalParent, PhysicalRotation, PhysicalTranslation, Velocity}, physics::{ColliderShape::self, CylinderTarget, EPSILON_TOLERANCE, SphereTarget}, shared::{ColliderType, PitchCollisionZone, Restitution, SoccerCollider}, team::{PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_SLIDE_SPEED: f32 = 18.;
@@ -620,6 +620,7 @@ fn interaction_handler(
 }
 
 fn ball_control(
+	pressure:Res<BallPressure>,
 	ball:Single<( &mut Velocity, &PhysicalTranslation), With<Ball>>,
 	players:Query<(&Player, &PhysicalTranslation, &PhysicalRotation, &Velocity,  &PlayerState), Without<Ball>>,
 	mut gizmos: Gizmos,
@@ -658,9 +659,11 @@ fn ball_control(
 
 		let vel_diff = velocity.to_vec3() - ball_vec;
 		//effect of player dribnling the ball
-		let speed_match_force = vel_diff * player.speed_match_factor;			
+		let speed_match_force = vel_diff * player.speed_match_factor ;			
 		//effect of player moving the ball to optimal control position
-		let control_force = -to_control_point * player.distance_match_factor;
+		
+		
+		let control_force = -to_control_point * player.distance_match_factor ;
 		//total force modulated by distance factor
 		let combined_force = (control_force + speed_match_force) * distance_factor;
 		//add top totallizer!

@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::{ball::{Ball, PitchSensorMessage}, game_state::GameState, motion::*, pitch::SensorType, shared::PitchConfiguration, team::{Team, TeamMember}};
+use crate::{ball::{Ball, PitchSensorMessage}, constants::OPTIMAL_CONTROL_DISTANCE, game_state::GameState, motion::*, physics::EPSILON_TOLERANCE, pitch::SensorType, shared::PitchConfiguration, team::{Team, TeamMember}};
  
 pub struct MatchStatePlugin;
 
@@ -8,8 +8,9 @@ impl Plugin for MatchStatePlugin{
 	fn build(&self, app: &mut App) {
 		app
 			.init_resource::<MatchState>()
+			.init_resource::<BallPressure>()
 			.add_systems(OnEnter(GameState::Playing), init_match_state)
-			.add_systems(FixedPreUpdate, update_match_state)
+			.add_systems(FixedPreUpdate, (update_match_state, calculate_ball_pressure).chain())
 			.add_systems(FixedUpdate, handle_pitch_sensors)
 		;
 	}
@@ -36,8 +37,6 @@ fn handle_pitch_sensors(
 				else{
 					info!("Corner / goal kick");
 				}
-
-
 			}
 		}
 		
@@ -89,21 +88,31 @@ fn update_match_state(
 			match_state.south_team.push(snapshot);
 		}
 	}
+}
 
+fn calculate_ball_pressure(
+	match_state: Res<MatchState>,
+	mut ball_pressure: ResMut<BallPressure>,
+){
+	ball_pressure.north = calculate_team_pressure(&match_state.north_team, match_state.ball_location, match_state.ball_velocity);
+	ball_pressure.south = calculate_team_pressure(&match_state.south_team, match_state.ball_location, match_state.ball_velocity);
+	info!("ball pressure: north: {} south: {}", ball_pressure.north, ball_pressure.south);
+}
 
-	/*
-	match_state.posession = match ball.possession{
-			Some(player_entity) => { 
-				if let Ok(team) = player_team_query.get(player_entity) { 
-					Some(team.0) 
-				} 
-				else { 
-					None 
-				}
-			}
-			None => None,
-	};
-	 */
+const MAX_PRESURE_DISTANCE:f32 = 3.0;
+
+fn calculate_team_pressure(north_team:&[PlayerSnapshot], ball_location: Vec3, ball_velocity: Vec3) -> f32 {
+	let mut pressure:f32 = 0.;
+	for player in north_team.iter(){
+		let diff = ball_location - player.translation;
+		if  diff.length_squared() < MAX_PRESURE_DISTANCE * MAX_PRESURE_DISTANCE{
+			let (normal, dist) = diff.normalize_and_length();
+			let vel_diff = player.velocity - ball_velocity;
+			let approach_factor = vel_diff.dot(normal).clamp(0., 5.) / 5.;
+			pressure += (approach_factor + 1.) * ((MAX_PRESURE_DISTANCE - dist.min(OPTIMAL_CONTROL_DISTANCE)) / MAX_PRESURE_DISTANCE);
+		}
+	}
+	pressure
 }
 
 
@@ -125,4 +134,10 @@ pub struct PlayerSnapshot{
 	pub entity:Entity,
 	pub translation:Vec3,
 	pub velocity:Vec3,
+}
+
+#[derive(Resource, Debug, Default)]
+pub struct BallPressure{
+	pub north:f32,
+	pub south:f32,
 }
