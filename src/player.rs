@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use std::{f32::consts::PI, time::Duration };
 use bevy::{gltf::GltfMesh, light::NotShadowCaster, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
-use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{AfterTouch, BALL_GROUND_LEVEL, Ball}, constants::*, game_control::{ActiveControl, MovementControl}, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, kit::{KitConfiguration, KitGenerator}, match_state::{BallPressure, MatchState, PlayerSnapshot}, motion::{ChildPhysicalOffset, PhysicalChildren, PhysicalParent, PhysicalRotation, PhysicalTranslation, Velocity}, physics::{ColliderShape::self, CylinderTarget, EPSILON_TOLERANCE, SphereTarget}, shared::{ColliderType, PitchCollisionZone, Restitution, SoccerCollider}, team::{PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
+use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{AfterTouch, BALL_GROUND_LEVEL, Ball, BallVelocityAdjust}, constants::*, game_control::{ActiveControl, MovementControl}, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, kit::{KitConfiguration, KitGenerator}, match_state::{BallPressure, MatchState, PlayerSnapshot}, motion::{ChildPhysicalOffset, PhysicalChildren, PhysicalParent, PhysicalRotation, PhysicalTranslation, Velocity}, physics::{ColliderShape::self, CylinderTarget, EPSILON_TOLERANCE, SphereTarget}, shared::{ColliderType, PitchCollisionZone, Restitution, SoccerCollider}, team::{PitchEnd, PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_SLIDE_SPEED: f32 = 18.;
@@ -102,7 +102,7 @@ pub struct BallInteractionMessage{
 	pub entity:Entity,
 }
 
-#[derive(Component, Default, PartialEq, Eq)]
+#[derive(Component, Default, PartialEq, Eq, Debug, Clone)]
 pub enum PlayerState {
   #[default]
 	None,
@@ -110,6 +110,29 @@ pub enum PlayerState {
 	KickRecover(Timer),
 	Slide(Timer),
 	SlideRecover(Timer),
+}
+
+
+impl PlayerState{
+	pub fn can_attack(&self) -> bool{
+		match self{
+			PlayerState::None => true,
+			PlayerState::KickWindup(_) => true,
+			PlayerState::KickRecover(_) => false,
+			PlayerState::Slide(_) => true,
+			PlayerState::SlideRecover(_) => false,
+		}
+	}
+
+	pub fn can_dribble(&self) -> bool{
+		match self{
+			PlayerState::None => true,
+			PlayerState::KickWindup(_) => true,
+			PlayerState::KickRecover(_) => true,
+			PlayerState::Slide(_) => false,
+			PlayerState::SlideRecover(_) => false,
+		}
+	}
 }
 
 
@@ -175,7 +198,7 @@ fn init_player(
 
 fn spawn_players(
 	mut commands: Commands,
-	teams_query:Query<(Entity, &Team)>,
+	teams_query:Query<(Entity, &Team, &PitchEnd)>,
 	player_assets: Res<PlayerAssets>,
 ){
 
@@ -197,7 +220,7 @@ fn spawn_players(
 		Vec2{ x:0., y:0.05},
 	];
 
-	for (team_entity, team) in teams_query{
+	for (team_entity, team, end) in teams_query{
 
 		for i in 0usize .. 11{
 			
@@ -214,6 +237,7 @@ fn spawn_players(
 
 			let id = commands.spawn((
 				(
+
 					Player{ ..default() },
 					Name::new("Player"),
 					kit,
@@ -228,6 +252,7 @@ fn spawn_players(
 					PhysicalTranslation(Vec3::new((i as f32 * 2.) - 0.75, 0., z_pos)),
 					Velocity{ direction: Dir3::Y, speed: 0. },
 					PhysicalRotation(Quat::from_rotation_y(facing)),
+					*end,
 				),
 				(
 					SoccerCollider,
@@ -619,14 +644,16 @@ fn interaction_handler(
 	}
 }
 
+
 fn ball_control(
-	pressure:Res<BallPressure>,
-	ball:Single<( &mut Velocity, &PhysicalTranslation), With<Ball>>,
+	presure:Res<BallPressure>,
+	ball:Single<( &Velocity, &PhysicalTranslation), With<Ball>>,
 	players:Query<(&Player, &PhysicalTranslation, &PhysicalRotation, &Velocity,  &PlayerState), Without<Ball>>,
 	mut gizmos: Gizmos,
 	time:Res<Time<Fixed>>,
+	mut ball_valocity_adjust_writer:MessageWriter<BallVelocityAdjust>,
 ){
-	let ( mut ball_velocity,  ball_translation) = ball.into_inner();
+	let ( ball_velocity,  ball_translation) = ball.into_inner();
 	if ball_translation.0.y > MAX_DRIBBLE_HEIGHT{ return; } //no dribbling high balls!
 
 	let ball_vec = ball_velocity.to_vec3();
@@ -672,12 +699,8 @@ fn ball_control(
 		gizmos.arrow(ball_translation.0, ball_translation.0 + combined_force, bevy::color::palettes::css::BLUE);
 		
 	}
-	//ball.possession = Some(candidate.entity);
-	//cal total change
-	let ball_vec = ball_velocity.to_vec3() + time.delta_secs() * total_force;
-	//update ball velocity
-	*ball_velocity = Velocity::from_vec3(ball_vec).unwrap_or(Velocity::ZERO);	
 
+ 	ball_valocity_adjust_writer.write(BallVelocityAdjust { absolute: false, velocity: time.delta_secs() * total_force, after_touch:None });
 }
 
 
@@ -687,8 +710,9 @@ fn kick_event_handler(
 	mut kick_message_reader:MessageReader<KickMessage>,
 	mut active_player_message_writer:MessageWriter<ActivePlayerSwitch>,
 	player_query:Query<(&PhysicalTranslation, &PhysicalRotation, &TargetRotation, &TeamMember), Without<Ball>>,
-	ball:Single<(Entity, &PhysicalTranslation, &mut Velocity), With<Ball>>,
+	ball:Single<(Entity, &PhysicalTranslation, &Velocity), With<Ball>>,
 	match_state:Res<MatchState>,	
+	mut ball_velocity_writer:MessageWriter<BallVelocityAdjust>,
 ){
 	if kick_message_reader.is_empty(){
 		return;
@@ -715,14 +739,8 @@ fn kick_event_handler(
 			// big kick
 			let power = (kick_time / MAX_POWER_HOLD).min(1.0);
 			info!("Shoot {}", power);
-			let shoot = shoot_dir.with_y(power * 0.15).normalize();
-			//let shot_dir = Vec3::new(player_movement.direction.x, 0.2, player_movement.direction.y).normalize_or_zero();
-			velocity.direction = Dir3::new_unchecked(shoot);
-			velocity.speed = power* 60.0;
-			commands.entity(ball_entity).insert((
-				ActiveControl{ team:team.0 },
-				AfterTouch(Timer::from_seconds(0.5, TimerMode::Once))
-			));
+			let shot = shoot_dir.with_y(power * 0.15) * power * 60.;
+			ball_velocity_writer.write(BallVelocityAdjust { absolute: true, velocity: shot, after_touch: Some(team.0) });
 		}	
 		else{
 			//pass
@@ -746,7 +764,7 @@ fn kick_event_handler(
 					let distance_angle = (0.2 + angle) * diff.length();
 					if best_distance_angle.is_none() || best_distance_angle > Some(distance_angle){
 						best_distance_angle = Some(distance_angle);
-						best_pass_candidate = Some(*candidate);
+						best_pass_candidate = Some(candidate.clone());
 					}
 				}
 			}
@@ -756,19 +774,14 @@ fn kick_event_handler(
 				let eta = dist / PASS_SPEED;
 				let predicted_location = candidate.translation + candidate.velocity * eta;
 				let shoot_vector = (predicted_location - player_translation.0).normalize();
-				velocity.direction = Dir3::new_unchecked(shoot_vector);
-				velocity.speed = PASS_SPEED;
+
+
+				ball_velocity_writer.write(BallVelocityAdjust { absolute: true, velocity: shoot_vector * PASS_SPEED, after_touch: None });
 				info!("Pass to {} travel time {}", candidate.entity, eta);
 				active_player_message_writer.write(ActivePlayerSwitch(candidate.entity));
 			}
 			else{
-				velocity.direction = Dir3::new_unchecked(shoot_dir);
-				velocity.speed = PASS_SPEED;
-				info!("Pass no target");
-				commands.entity(ball_entity).insert((
-					ActiveControl{ team:team.0 },
-					AfterTouch(Timer::from_seconds(0.5, TimerMode::Once))
-				));
+				ball_velocity_writer.write(BallVelocityAdjust { absolute: true, velocity: shoot_dir * PASS_SPEED, after_touch: Some(team.0) });
 			}
 			
 		}

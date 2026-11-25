@@ -13,6 +13,13 @@ impl Plugin for TeamPlugin{
 }
 
 
+#[derive(Component, Default, Debug, PartialEq, Eq, Clone, Copy)]
+pub enum PitchEnd{
+	#[default]
+	North, 
+	South, 
+}
+
 #[derive(Debug,Component, Clone)]
 pub struct Team{
 	pub top:bool,
@@ -48,6 +55,7 @@ fn init_teams(
 ){
 	commands.spawn((
 		PlayerControlled,
+		PitchEnd::North,
 		Team{
 			top: true,
 			name: String::from("Reds"),
@@ -67,7 +75,8 @@ fn init_teams(
 			},
 		}
 	));
-	commands.spawn(
+	commands.spawn((
+		PitchEnd::South,
 		Team{
 			top:false,
 			name: String::from("Blues"),
@@ -86,5 +95,5 @@ fn init_teams(
 				shirt_number: 1
 			},
 		}
-	);
+	));
 }

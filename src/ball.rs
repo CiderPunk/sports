@@ -1,7 +1,7 @@
 use bevy::{camera::visibility::NoFrustumCulling, math::FloatPow, prelude::*, time::Stopwatch};
 use std::f32::consts::PI;
 use bevy_asset_loader::prelude::*;
-use crate::{assets::AssetLoadState, constants::*, game_control::{ActiveControl, MovementControl}, game_schedule::GameSchedule, game_state::GameState, helpers::*, motion::{PhysicalRotation, PhysicalTranslation, Velocity}, physics::{Collidable, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget}, player::{BallInteractionMessage, Player, PlayerState}, shared::{ColliderType, PitchCollisionZone, PitchConfiguration, Restitution, SoccerCollider}};
+use crate::{assets::AssetLoadState, ball, constants::*, game_control::{ActiveControl, MovementControl}, game_schedule::GameSchedule, game_state::GameState, helpers::*, motion::{PhysicalRotation, PhysicalTranslation, Velocity}, physics::{Collidable, ColliderShape, EPSILON_TOLERANCE, FrameMotion, HitResult, SphereSweep, SphereTarget}, player::{BallInteractionMessage, Player, PlayerState}, shared::{ColliderType, PitchCollisionZone, PitchConfiguration, Restitution, SoccerCollider}};
 
 const BALL_SCALE: f32 = 0.5;
 pub const BALL_RADIUS:f32 = 0.25 * BALL_SCALE;
@@ -27,15 +27,15 @@ pub struct BallPlugin;
 impl Plugin for BallPlugin{
 	fn build(&self, app: &mut App) {
 		app
+			.add_message::<BallVelocityAdjust>()
 			.configure_loading_state(
 				LoadingStateConfig::new(AssetLoadState::Startup)
 				.load_collection::<BallAssets>(),
 			)
 			.add_message::<PitchSensorMessage>()
 			.add_systems(OnEnter(GameState::Playing), spawn_ball)
-			.add_systems(FixedUpdate, (after_touch, //dribble, 
-				physics).chain().in_set(GameSchedule::PreMovement))
-			.add_systems(FixedUpdate, (do_movement, do_rotation).chain().in_set(GameSchedule::Movement))
+			.add_systems(FixedUpdate, (after_touch, physics).chain().in_set(GameSchedule::PreMovement))
+			.add_systems(FixedUpdate, (apply_velocity_changes, do_movement, do_rotation).chain().in_set(GameSchedule::Movement))
 
 
 
@@ -44,6 +44,13 @@ impl Plugin for BallPlugin{
 		//	.add_systems(FixedUpdate, (decide_influence, update_ball).chain().in_set(GameSchedule::MoveBall))
 			;
 	}
+}
+
+#[derive(Message, Debug, Default)]
+pub struct BallVelocityAdjust{
+	pub absolute:bool,
+	pub velocity:Vec3,
+	pub after_touch:Option<Entity>,
 }
 
 #[derive(AssetCollection, Resource)]
@@ -126,6 +133,33 @@ struct ControlCandidate{
 	velocity:Velocity,
 }
 
+fn apply_velocity_changes(
+	mut commands:Commands,
+	mut message_reader:MessageReader<BallVelocityAdjust>,
+	ball:Single<(Entity, &mut Velocity), With<Ball>>,
+){
+	if message_reader.is_empty() { return; }
+
+	let (ball_entity, mut ball_velocity) = ball.into_inner();
+	let mut velocity = ball_velocity.to_vec3();
+	for message in message_reader.read(){
+		if message.absolute {
+			velocity = message.velocity;
+			if let Some(after_touch_controller) = message.after_touch{
+				commands.entity(ball_entity).insert((
+					ActiveControl{ team:after_touch_controller },
+					AfterTouch(Timer::from_seconds(0.5, TimerMode::Once))
+				));
+			}
+			break;
+		} 
+		else {
+			velocity += message.velocity;		
+		}
+	}
+	message_reader.clear();
+	*ball_velocity = Velocity::from_vec3(velocity).unwrap_or(Velocity::ZERO);
+}
 
 fn after_touch(
 	mut commands:Commands,

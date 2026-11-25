@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::{ball::{Ball, PitchSensorMessage}, constants::OPTIMAL_CONTROL_DISTANCE, game_state::GameState, motion::*, physics::EPSILON_TOLERANCE, pitch::SensorType, shared::PitchConfiguration, team::{Team, TeamMember}};
+use crate::{ball::{Ball, PitchSensorMessage}, constants::OPTIMAL_CONTROL_DISTANCE, game_state::GameState, motion::*, physics::EPSILON_TOLERANCE, pitch::SensorType, player::PlayerState, shared::PitchConfiguration, team::{Team, TeamMember}};
  
 pub struct MatchStatePlugin;
 
@@ -66,7 +66,7 @@ fn update_match_state(
 	time:Res<Time>,
 	ball:Single<(&Ball, &Velocity, &PhysicalTranslation)>,
 	player_team_query:Query<&TeamMember>,
-	players:Query<(Entity, &PhysicalTranslation, &Velocity, &TeamMember)>
+	players:Query<(Entity, &PhysicalTranslation, &PhysicalRotation, &Velocity, &TeamMember, &PlayerState)>
 ){
 	match_state.match_time.tick(time.delta());
 	let (ball, ball_velocity,  ball_translation) = ball.into_inner();
@@ -79,8 +79,15 @@ fn update_match_state(
 	match_state.north_team.clear();
 	match_state.south_team.clear();
 
-	for (entity, translation, velocity, team) in players{
-		let snapshot = PlayerSnapshot{ entity, translation:translation.0, velocity: velocity.to_vec3() };
+	for (entity, translation, rotation, velocity, team, player_state) in players{
+		let snapshot = PlayerSnapshot{ 
+			entity, 
+			translation:translation.0, 
+			velocity: velocity.to_vec3(), 
+			can_attack: player_state.can_attack(), 
+			can_dribble: player_state.can_dribble(),
+    	rotation:rotation.0,	
+		};
 		if match_state.top_team == Some(team.0){
 			match_state.north_team.push(snapshot);
 		}
@@ -100,19 +107,33 @@ fn calculate_ball_pressure(
 }
 
 const MAX_PRESURE_DISTANCE:f32 = 3.0;
+const STANDING_ATTACK_VELOCITY:f32 = 1.5;
+//opposition players who can reach the ball in this time trigger maxmimum pressure
+const PANIC_TIME:f32 = 0.6;
 
-fn calculate_team_pressure(north_team:&[PlayerSnapshot], ball_location: Vec3, ball_velocity: Vec3) -> f32 {
-	let mut pressure:f32 = 0.;
-	for player in north_team.iter(){
+fn calculate_team_pressure(team:&[PlayerSnapshot], ball_location: Vec3, ball_velocity: Vec3) -> f32 {
+	//chillness is 1 to start
+	let mut chillness:f32 = 1.;
+	for player in team.iter(){
+		//players on the floor cannot impart pressure!
+		if !player.can_attack{ continue; }
 		let diff = ball_location - player.translation;
 		if  diff.length_squared() < MAX_PRESURE_DISTANCE * MAX_PRESURE_DISTANCE{
 			let (normal, dist) = diff.normalize_and_length();
 			let vel_diff = player.velocity - ball_velocity;
-			let approach_factor = vel_diff.dot(normal).clamp(0., 5.) / 5.;
-			pressure += (approach_factor + 1.) * ((MAX_PRESURE_DISTANCE - dist.min(OPTIMAL_CONTROL_DISTANCE)) / MAX_PRESURE_DISTANCE);
+			//standing attack velocity is a threat posed by immobile opposition players otherwie it'd be zero
+			let approach_speed = vel_diff.dot(normal).max(0.) + STANDING_ATTACK_VELOCITY;
+			let time_to_intercept = dist / approach_speed;
+			//calculate raw panic
+			let panic_raw = (1. - (time_to_intercept / PANIC_TIME));
+			//smoooth
+			let panic_smooth = panic_raw.smoothstep(0., 1.);
+			//and then affect the chill
+			chillness *= 1. - panic_smooth;
 		}
 	}
-	pressure
+	//pressure is chillness inverted
+	1. - chillness
 }
 
 
@@ -129,11 +150,14 @@ pub struct MatchState{
 	pub south_team:Vec<PlayerSnapshot>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct PlayerSnapshot{
 	pub entity:Entity,
 	pub translation:Vec3,
+	pub rotation:Quat,
 	pub velocity:Vec3,
+	pub can_attack:bool,
+	pub can_dribble:bool,
 }
 
 #[derive(Resource, Debug, Default)]
