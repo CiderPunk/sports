@@ -103,7 +103,7 @@ fn calculate_ball_pressure(
 ){
 	ball_pressure.north = calculate_team_pressure(&match_state.north_team, match_state.ball_location, match_state.ball_velocity);
 	ball_pressure.south = calculate_team_pressure(&match_state.south_team, match_state.ball_location, match_state.ball_velocity);
-	info!("ball pressure: north: {} south: {}", ball_pressure.north, ball_pressure.south);
+	//info!("ball pressure: north: {} south: {}", ball_pressure.north, ball_pressure.south);
 }
 
 const MAX_PRESURE_DISTANCE:f32 = 3.0;

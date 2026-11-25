@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use std::{f32::consts::PI, time::Duration };
 use bevy::{gltf::GltfMesh, light::NotShadowCaster, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
-use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{AfterTouch, BALL_GROUND_LEVEL, Ball, BallVelocityAdjust}, constants::*, game_control::{ActiveControl, MovementControl}, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, kit::{KitConfiguration, KitGenerator}, match_state::{BallPressure, MatchState, PlayerSnapshot}, motion::{ChildPhysicalOffset, PhysicalChildren, PhysicalParent, PhysicalRotation, PhysicalTranslation, Velocity}, physics::{ColliderShape::self, CylinderTarget, EPSILON_TOLERANCE, SphereTarget}, shared::{ColliderType, PitchCollisionZone, Restitution, SoccerCollider}, team::{PitchEnd, PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
+use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{AfterTouch, BALL_GROUND_LEVEL, Ball, BallAdjustMessage}, constants::*, game_control::{ActiveControl, MovementControl}, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, kit::{KitConfiguration, KitGenerator}, match_state::{BallPressure, MatchState, PlayerSnapshot}, motion::{ChildPhysicalOffset, PhysicalChildren, PhysicalParent, PhysicalRotation, PhysicalTranslation, Velocity}, physics::{ColliderShape::self, CylinderTarget, EPSILON_TOLERANCE, SphereTarget}, shared::{ColliderType, PitchCollisionZone, Restitution, SoccerCollider}, team::{PitchEnd, PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_SLIDE_SPEED: f32 = 18.;
@@ -651,7 +651,7 @@ fn ball_control(
 	players:Query<(&Player, &PhysicalTranslation, &PhysicalRotation, &Velocity,  &PlayerState), Without<Ball>>,
 	mut gizmos: Gizmos,
 	time:Res<Time<Fixed>>,
-	mut ball_valocity_adjust_writer:MessageWriter<BallVelocityAdjust>,
+	mut ball_valocity_adjust_writer:MessageWriter<BallAdjustMessage>,
 ){
 	let ( ball_velocity,  ball_translation) = ball.into_inner();
 	if ball_translation.0.y > MAX_DRIBBLE_HEIGHT{ return; } //no dribbling high balls!
@@ -700,7 +700,7 @@ fn ball_control(
 		
 	}
 
- 	ball_valocity_adjust_writer.write(BallVelocityAdjust { absolute: false, velocity: time.delta_secs() * total_force, after_touch:None });
+ 	ball_valocity_adjust_writer.write(BallAdjustMessage { absolute: false, velocity: time.delta_secs() * total_force, after_touch:None });
 }
 
 
@@ -712,7 +712,7 @@ fn kick_event_handler(
 	player_query:Query<(&PhysicalTranslation, &PhysicalRotation, &TargetRotation, &TeamMember), Without<Ball>>,
 	ball:Single<(Entity, &PhysicalTranslation, &Velocity), With<Ball>>,
 	match_state:Res<MatchState>,	
-	mut ball_velocity_writer:MessageWriter<BallVelocityAdjust>,
+	mut ball_writer:MessageWriter<BallAdjustMessage>,
 ){
 	if kick_message_reader.is_empty(){
 		return;
@@ -740,7 +740,7 @@ fn kick_event_handler(
 			let power = (kick_time / MAX_POWER_HOLD).min(1.0);
 			info!("Shoot {}", power);
 			let shot = shoot_dir.with_y(power * 0.15) * power * 60.;
-			ball_velocity_writer.write(BallVelocityAdjust { absolute: true, velocity: shot, after_touch: Some(team.0) });
+			ball_writer.write(BallAdjustMessage { absolute: true, velocity: shot, after_touch: Some(team.0) });
 		}	
 		else{
 			//pass
@@ -776,12 +776,12 @@ fn kick_event_handler(
 				let shoot_vector = (predicted_location - player_translation.0).normalize();
 
 
-				ball_velocity_writer.write(BallVelocityAdjust { absolute: true, velocity: shoot_vector * PASS_SPEED, after_touch: None });
+				ball_writer.write(BallAdjustMessage { absolute: true, velocity: shoot_vector * PASS_SPEED, after_touch: None });
 				info!("Pass to {} travel time {}", candidate.entity, eta);
 				active_player_message_writer.write(ActivePlayerSwitch(candidate.entity));
 			}
 			else{
-				ball_velocity_writer.write(BallVelocityAdjust { absolute: true, velocity: shoot_dir * PASS_SPEED, after_touch: Some(team.0) });
+				ball_writer.write(BallAdjustMessage { absolute: true, velocity: shoot_dir * PASS_SPEED, after_touch: Some(team.0) });
 			}
 			
 		}

@@ -10,7 +10,7 @@ const GRAVITY_DOWN:f32 = 9.8;
 const GRAVITY:Vec3 = Vec3::new(0., -GRAVITY_DOWN, 0.);
 const BALL_RESTITUTION:f32 = 0.8;
 //air damping
-const DRAG_COEFFICIENT:f32 = 0.30;
+const DRAG_COEFFICIENT:f32 = 0.70;
 const AIR_DENSITY:f32 = 1.225;
 const BALL_CROSS_SECTION_AREA:f32 = PI * BALL_RADIUS * BALL_RADIUS; //0.038;
 const AIR_DAMPING:f32 = 0.5 * AIR_DENSITY * BALL_CROSS_SECTION_AREA * DRAG_COEFFICIENT;
@@ -27,7 +27,7 @@ pub struct BallPlugin;
 impl Plugin for BallPlugin{
 	fn build(&self, app: &mut App) {
 		app
-			.add_message::<BallVelocityAdjust>()
+			.add_message::<BallAdjustMessage>()
 			.configure_loading_state(
 				LoadingStateConfig::new(AssetLoadState::Startup)
 				.load_collection::<BallAssets>(),
@@ -47,7 +47,7 @@ impl Plugin for BallPlugin{
 }
 
 #[derive(Message, Debug, Default)]
-pub struct BallVelocityAdjust{
+pub struct BallAdjustMessage{
 	pub absolute:bool,
 	pub velocity:Vec3,
 	pub after_touch:Option<Entity>,
@@ -135,7 +135,7 @@ struct ControlCandidate{
 
 fn apply_velocity_changes(
 	mut commands:Commands,
-	mut message_reader:MessageReader<BallVelocityAdjust>,
+	mut message_reader:MessageReader<BallAdjustMessage>,
 	ball:Single<(Entity, &mut Velocity), With<Ball>>,
 ){
 	if message_reader.is_empty() { return; }
