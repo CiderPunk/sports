@@ -221,7 +221,7 @@ impl Collidable for SphereTarget{
 		
 		let vec_sphere = sphere.start - movement.origin;
 		let total_radius = sphere.radius + self.radius;
-		let sphere_velocity = (sphere.movement.direction * sphere.movement.distance) 
+		let sphere_velocity = (sphere.movement.direction * sphere.movement.distance);
 		let relative_velocity = sphere_velocity - (movement.direction * movement.distance);
 
 		let a = relative_velocity.length_squared();
