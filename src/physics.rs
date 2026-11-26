@@ -221,10 +221,11 @@ impl Collidable for SphereTarget{
 		
 		let vec_sphere = sphere.start - movement.origin;
 		let total_radius = sphere.radius + self.radius;
-		let velocity = (sphere.movement.direction * sphere.movement.distance) - (movement.direction * movement.distance);
+		let sphere_velocity = (sphere.movement.direction * sphere.movement.distance) 
+		let relative_velocity = sphere_velocity - (movement.direction * movement.distance);
 
-		let a = velocity.length_squared();
-		let b = vec_sphere.dot(velocity);
+		let a = relative_velocity.length_squared();
+		let b = vec_sphere.dot(relative_velocity);
 		let c = vec_sphere.length_squared() - total_radius.squared();
 
 		let discriminant = b * b - 4.0 * a * c;
@@ -239,7 +240,7 @@ impl Collidable for SphereTarget{
 
 		if t == f32::MAX { return None; }
 
-		let world_hit_point = sphere.start + t * velocity;
+		let world_hit_point = sphere.start + t * sphere_velocity;
 		let normal = Dir3::new(world_hit_point - movement.origin).unwrap_or(Dir3::Y);
 
 		Some(HitResult {
