@@ -296,9 +296,9 @@ fn do_movement(
 	mut ball_interaction_writer:MessageWriter<BallInteractionMessage>,
 ){
 	let (ball_entity, mut translation, mut ball_velocity, ball) = ball.into_inner();
-	let ball_translation = translation.0;
+	//let ball_translation = translation.0;
 	let low_speed = ball_velocity.speed < PASS_SPEED && translation.0.y < MAX_DRIBBLE_HEIGHT;
-	let mut ball_movement =  ball_velocity.as_frame_motion(ball_translation, 0., time.delta_secs());
+	let mut ball_movement =  ball_velocity.as_frame_motion(translation.0, 0., time.delta_secs());
 	let mut time_offset = 0.;
 	let mut collision_count:usize = 0;
 	let mut delta = time.delta_secs();
@@ -307,7 +307,7 @@ fn do_movement(
 	while delta > 0. && collision_count < 3 {
 		let  area_filter = pitch_config.get_pitch_collision_zone(ball_movement.origin);
 		let sphere_sweep = SphereSweep{ 
-			start: ball_translation, 
+			start: translation.0, 
 			movement: ball_movement,
 			radius: BALL_RADIUS,
 		};
