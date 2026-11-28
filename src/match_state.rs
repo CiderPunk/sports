@@ -118,7 +118,8 @@ fn calculate_team_pressure(team:&[PlayerSnapshot], ball_location: Vec3, ball_vel
 		//players on the floor cannot impart pressure!
 		if !player.can_attack{ continue; }
 		let diff = ball_location - player.translation;
-		if  diff.length_squared() < MAX_PRESURE_DISTANCE * MAX_PRESURE_DISTANCE{
+		let dist_sq = diff.length_squared();
+		if dist_sq < MAX_PRESURE_DISTANCE * MAX_PRESURE_DISTANCE && dist_sq  > EPSILON_TOLERANCE{
 			let (normal, dist) = diff.normalize_and_length();
 			let vel_diff = player.velocity - ball_velocity;
 			//standing attack velocity is a threat posed by immobile opposition players otherwie it'd be zero
@@ -133,7 +134,7 @@ fn calculate_team_pressure(team:&[PlayerSnapshot], ball_location: Vec3, ball_vel
 		}
 	}
 	//pressure is chillness inverted
-	chillness
+	1. - chillness
 }
 
 

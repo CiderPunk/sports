@@ -127,7 +127,7 @@ impl PlayerState{
 		match self{
 			PlayerState::None => true,
 			PlayerState::KickWindup(_) => true,
-			PlayerState::KickRecover(_) => true,
+			PlayerState::KickRecover(_) => false,
 			PlayerState::Slide(_) => false,
 			PlayerState::SlideRecover(_) => false,
 		}
@@ -705,7 +705,7 @@ fn ball_control(
 		//is active player in there
 		let active = candidates.iter().find(|p| { p.active });
 		//closest
-		let Some(closest) = candidates.iter().min_by(|x,y| {  x.control_factor.total_cmp(&y.control_factor) }) else{ panic!("Failed to find closest player"); };
+		let Some(closest) = candidates.iter().max_by(|x,y| {  x.control_factor.total_cmp(&y.control_factor) }) else{ panic!("Failed to find closest player"); };
 		//target active or failing that closest
 		
 		if active.is_none() && closest.control_factor > 0.8{
@@ -723,9 +723,9 @@ fn ball_control(
 			1.
 		}};
 		let control = closest.control_factor * support_factor;
-		let control_force = -target.to_control_point * (closest.distance_match * pressure);
+		let control_force = -target.to_control_point * (closest.distance_match * (1.0 - pressure));
 		let vel_diff = target.velocity - ball_velocity;
-		let speed_match_force = vel_diff * closest.speed_match;		
+		let speed_match_force = vel_diff * target.speed_match;		
 		let total_force = (speed_match_force + control_force) * control;
 		(total_force, active_switch)		
 	};
@@ -740,7 +740,7 @@ fn ball_control(
 	if let Some(north_active) = north_active{
 		active_player_writer.write(ActivePlayerSwitchMessage(north_active));
 	}
-if let Some(south_active) = south_active{
+	if let Some(south_active) = south_active{
 		active_player_writer.write(ActivePlayerSwitchMessage(south_active));
 	}
 	//let influence = compute_influence(&north, presure.south) + compute_influence(&south, presure.north);
@@ -796,7 +796,6 @@ if let Some(south_active) = south_active{
 
 
 fn kick_event_handler(
-	mut commands:Commands,
 	mut kick_message_reader:MessageReader<KickMessage>,
 	mut active_player_message_writer:MessageWriter<ActivePlayerSwitchMessage>,
 	player_query:Query<(&PhysicalTranslation, &PhysicalRotation, &TargetRotation, &TeamMember), Without<Ball>>,
