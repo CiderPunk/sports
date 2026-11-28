@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use crate::{ball::BALL_GROUND_LEVEL, constants::*};
-
+/*
 pub fn to_nearest_control_point(ball_translation:Vec3, player_translation:Vec3, player_rotation:Quat)->Option<Vec3>{
 	let to_ball = ball_translation.xz() - player_translation.xz();
 	if to_ball.length_squared() > MAX_INTERACTION_DISTANCE * MAX_INTERACTION_DISTANCE{ return None; }
@@ -14,3 +14,4 @@ pub fn to_nearest_control_point(ball_translation:Vec3, player_translation:Vec3, 
 	let to_control_point = ball_translation - control_point;
 	Some(to_control_point)
 }
+	 */

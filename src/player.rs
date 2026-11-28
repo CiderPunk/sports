@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use std::{f32::consts::PI, time::Duration };
 use bevy::{gltf::GltfMesh, light::NotShadowCaster, time::{Stopwatch, common_conditions::on_timer}, world_serialization::WorldInstanceReady};
 use bevy_asset_loader::prelude::*;
-use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{AfterTouch, BALL_GROUND_LEVEL, Ball, BallAdjustMessage}, constants::*, game_control::{ActiveControl, MovementControl}, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative, helpers::to_nearest_control_point, kit::{KitConfiguration, KitGenerator}, match_state::{BallPressure, MatchState, PlayerSnapshot}, motion::{ChildPhysicalOffset, PhysicalChildren, PhysicalParent, PhysicalRotation, PhysicalTranslation, Velocity}, physics::{ColliderShape::self, CylinderTarget, EPSILON_TOLERANCE, SphereTarget}, shared::{ColliderType, PitchCollisionZone, Restitution, SoccerCollider}, team::{PitchEnd, PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
+use crate::{ animation_manager::AnimationManager, assets::AssetLoadState, ball::{AfterTouch, BALL_GROUND_LEVEL, Ball, BallAdjustMessage}, constants::*, game_control::{ActiveControl, MovementControl}, game_gizmos::{GameGizmoStore, GizmoColour}, game_schedule::GameSchedule, game_state::GameState, get_gltf_primative,  kit::{KitConfiguration, KitGenerator}, match_state::{BallPressure, MatchState, PlayerSnapshot}, motion::{ChildPhysicalOffset, PhysicalChildren, PhysicalParent, PhysicalRotation, PhysicalTranslation, Velocity}, physics::{ColliderShape::self, CylinderTarget, EPSILON_TOLERANCE, SphereTarget}, shared::{ColliderType, PitchCollisionZone, Restitution, SoccerCollider}, team::{PitchEnd, PlayerControlled, Team, TeamMember, TeamMembers}, think_distributor::{ThinkNext, Thinker}};
 
 const PLAYER_SPEED: f32 = 10.;
 const PLAYER_SLIDE_SPEED: f32 = 18.;
@@ -33,16 +33,15 @@ impl Plugin for PlayerPlugin{
 				LoadingStateConfig::new(AssetLoadState::Startup)
 				.load_collection::<PlayerAssets>(),
 			)
-			.add_message::<ActivePlayerSwitch>()
+			.add_message::<ActivePlayerSwitchMessage>()
 			.add_message::<KickMessage>()
 			.add_message::<SlideMessage>()
 			.add_message::<BallInteractionMessage>()
 			.add_systems(OnEnter(GameState::Initialize), (init_markers, init_player, spawn_players).chain())
 			.add_systems(Update, (update_active_marker_position, animate_player))
-			.add_systems(FixedUpdate,  (plan_movement, (kick_event_handler, slide_event_handler, ball_control) ).chain().in_set(GameSchedule::PreMovement))
+			.add_systems(FixedUpdate,  (plan_movement, (kick_event_handler, slide_event_handler, ball_control, interaction_handler) ).chain().in_set(GameSchedule::PreMovement))
 			.add_systems(FixedUpdate, (switch_active_player, player_think, do_movement).in_set(GameSchedule::Movement))
 			.add_systems(Update, (check_active_player).run_if(on_timer(Duration::from_secs_f32(0.2))))
-			.add_systems(FixedUpdate, interaction_handler.in_set(GameSchedule::PostMovement))
 			
 			;
 	}
@@ -83,7 +82,7 @@ impl Default for TargetRotation{
 }
 
 #[derive(Message)]
-pub struct ActivePlayerSwitch(Entity);
+pub struct ActivePlayerSwitchMessage(Entity);
 
 #[derive(Message)]
 pub struct KickMessage{
@@ -456,7 +455,7 @@ fn do_movement(
 const ACTIVE_PLAYER_TRANSITION_DISTANCE:f32 = 20.0;
 
 fn check_active_player(
-	mut message_writer:MessageWriter<ActivePlayerSwitch>,
+	mut message_writer:MessageWriter<ActivePlayerSwitchMessage>,
 	ball:Single<(&PhysicalTranslation, &Velocity), With<Ball>>,
 	teams:Query<&TeamMembers, With<PlayerControlled>>,
 	player_query:Query<(&PhysicalTranslation, Option<&ActiveControl>)>,
@@ -489,7 +488,7 @@ fn check_active_player(
 		}
 		if transition && closest_entity != active_player
 			&& let Some(new_active) = closest_entity{
-				message_writer.write(ActivePlayerSwitch(new_active));
+				message_writer.write(ActivePlayerSwitchMessage(new_active));
 			}
 	}
 }
@@ -497,7 +496,7 @@ fn check_active_player(
 
 
 fn switch_active_player(
-	mut message_reader:MessageReader<ActivePlayerSwitch>,
+	mut message_reader:MessageReader<ActivePlayerSwitchMessage>,
 	player_query:Query<&TeamMember>,
 	previous_player_query:Query<(&TeamMember, Entity),With<ActiveControl>>,
 	mut commands:Commands,
@@ -616,12 +615,12 @@ fn slide_event_handler(
 fn interaction_handler(
 	mut message_reader:MessageReader<BallInteractionMessage>,
 	mut collider_query:Query<(&mut ColliderType, &PhysicalParent), Without<Ball>>,
-	player_query:Query<(&Velocity, &MovementControl), (Without<PhysicalParent>, Without<Ball>)>,
-	mut ball_velocity:Single<&mut Velocity, With<Ball>>,
+	player_query:Query<(&Velocity, &MovementControl, &TeamMember), (Without<PhysicalParent>, Without<Ball>)>,
+	mut ball_valocity_adjust_writer:MessageWriter<BallAdjustMessage>,
 ){
 	for message in message_reader.read(){
 		let Ok((mut collider_type, parent_entity)) = collider_query.get_mut(message.entity) else { continue;};
-		let Ok((velocity, movement)) = player_query.get(parent_entity.0) else{ continue;};
+		let Ok((velocity, movement, team)) = player_query.get(parent_entity.0) else{ continue;};
 
 		match &mut *collider_type{
 			ColliderType::None => (),
@@ -632,34 +631,124 @@ fn interaction_handler(
 			ColliderType::Sensor => (),
 			ColliderType::Player => {},
 		}
-
-		//let shoot_dir = if movement.direction.length_squared() > EPSILON_TOLERANCE{
 		let movement_3d = Vec3::new(movement.direction.x, 0.0, movement.direction.y);
 		let shoot_dir = Dir3::new(movement_3d).unwrap_or(velocity.direction);
 		let power = velocity.speed / PLAYER_SLIDE_SPEED;
 		info!("Tackle! {}", power);
 
-		ball_velocity.direction = shoot_dir;
-		ball_velocity.speed = velocity.speed;
+ 		ball_valocity_adjust_writer.write(BallAdjustMessage { absolute: false, velocity: shoot_dir * velocity.speed, after_touch:Some(team.0) });
 	}
 }
 
 
+struct Candidate{
+	entity:Entity,
+	speed_match:f32,
+	distance_match:f32,
+	to_control_point:Vec3,
+	control_factor:f32,
+	velocity:Vec3,
+	active:bool,
+}
+
 fn ball_control(
 	presure:Res<BallPressure>,
 	ball:Single<( &Velocity, &PhysicalTranslation), With<Ball>>,
-	players:Query<(&Player, &PhysicalTranslation, &PhysicalRotation, &Velocity,  &PlayerState), Without<Ball>>,
+	players:Query<(Entity, &Player, &PhysicalTranslation, &PhysicalRotation, &Velocity,  &PlayerState, &PitchEnd, Option<&ActiveControl>), Without<Ball>>,
 	mut gizmos: Gizmos,
 	time:Res<Time<Fixed>>,
 	mut ball_valocity_adjust_writer:MessageWriter<BallAdjustMessage>,
+	mut active_player_writer:MessageWriter<ActivePlayerSwitchMessage>
 ){
 	let ( ball_velocity,  ball_translation) = ball.into_inner();
 	if ball_translation.0.y > MAX_DRIBBLE_HEIGHT{ return; } //no dribbling high balls!
+	let ball_velocity = ball_velocity.to_vec3();
 
-	let ball_vec = ball_velocity.to_vec3();
-	let mut total_force = Vec3::ZERO;
+	let mut north:Vec<Candidate> = Vec::new();
+	let mut south:Vec<Candidate> = Vec::new();
 
-	for (player, translation, rotation, velocity, state) in players{
+	for (entity, player, translation, rotation, velocity, player_state, end, active) in players.iter(){
+		if !player_state.can_dribble()
+		 || translation.0.distance_squared(ball_translation.0) > BROAD_PASS_CONTROL_DISTANCE * BROAD_PASS_CONTROL_DISTANCE
+		{ continue; }
+		
+		let to_control_point = to_nearest_control_point(ball_translation.0, translation.0, rotation.0);
+		let dist_squared = to_control_point.length_squared();
+		if dist_squared > MAX_CONTROL_DISTANCE * MAX_CONTROL_DISTANCE
+		{ continue; }
+
+		//distance from ball to player control spot
+		let dist = dist_squared.sqrt();
+		//control factor is a smooth=step calculated effectiveness of player control
+		let control_factor = (1. -(dist / MAX_CONTROL_DISTANCE)).smoothstep(0., 1.);
+		
+		let candidate = Candidate{ 
+			entity, 
+			speed_match:player.speed_match_factor, 
+			distance_match:player.distance_match_factor, 
+			control_factor, 
+			to_control_point, 
+			velocity: velocity.to_vec3(), 
+			active: active.is_some()  
+		};
+		match end {
+			PitchEnd::North => north.push(candidate),
+			PitchEnd::South => south.push(candidate),
+		}
+	}
+
+	let compute_influence = |candidates: &[Candidate], pressure:f32| -> (Vec3, Option<Entity>) {
+		let mut active_switch:Option<Entity> = None;
+		if candidates.len() == 0{
+			return (Vec3::ZERO, None);
+		}
+		//is active player in there
+		let active = candidates.iter().find(|p| { p.active });
+		//closest
+		let Some(closest) = candidates.iter().min_by(|x,y| {  x.control_factor.total_cmp(&y.control_factor) }) else{ panic!("Failed to find closest player"); };
+		//target active or failing that closest
+		
+		if active.is_none() && closest.control_factor > 0.8{
+			active_switch = Some(closest.entity);
+		}
+		let target = active.unwrap_or(closest);
+		//support factor 
+		let support_factor:f32 = {if candidates.len() > 1{
+			//sum supporting control from proximal players
+			let support_sum:f32 = (candidates.iter().map(|p| p.control_factor).sum::<f32>()) - closest.control_factor;
+			//each contributes 25% effort max of 0.4
+			1. + (support_sum * 0.25).max(0.4)
+		}
+		else{ 
+			1.
+		}};
+		let control = closest.control_factor * support_factor;
+		let control_force = -target.to_control_point * (closest.distance_match * pressure);
+		let vel_diff = target.velocity - ball_velocity;
+		let speed_match_force = vel_diff * closest.speed_match;		
+		let total_force = (speed_match_force + control_force) * control;
+		(total_force, active_switch)		
+	};
+
+	let (north_force, north_active) = compute_influence(&north, presure.south);
+	let (south_force, south_active) = compute_influence(&south, presure.north);
+
+	gizmos.arrow(ball_translation.0, ball_translation.0 + north_force, bevy::color::palettes::css::BLUE);
+	gizmos.arrow(ball_translation.0, ball_translation.0 + south_force, bevy::color::palettes::css::RED);
+
+	ball_valocity_adjust_writer.write(BallAdjustMessage { absolute:false, velocity: time.delta_secs() * (south_force + north_force), after_touch:None });
+	if let Some(north_active) = north_active{
+		active_player_writer.write(ActivePlayerSwitchMessage(north_active));
+	}
+if let Some(south_active) = south_active{
+		active_player_writer.write(ActivePlayerSwitchMessage(south_active));
+	}
+	//let influence = compute_influence(&north, presure.south) + compute_influence(&south, presure.north);
+
+}
+
+
+/*
 		
 		match state{
 				PlayerState::None => (),
@@ -668,18 +757,19 @@ fn ball_control(
 				PlayerState::Slide(_) => continue,
 				PlayerState::SlideRecover(_) => continue,
 		};
+
 		let Some(to_control_point) = to_nearest_control_point(ball_translation.0, translation.0, rotation.0) else{
 			continue;
 		};
 		gizmos.arrow(ball_translation.0, ball_translation.0 - to_control_point, bevy::color::palettes::css::RED);
 
 		let dist_squared = to_control_point.length_squared();
-		if dist_squared > PLAYER_MAX_CONTROL_DISTANCE * PLAYER_MAX_CONTROL_DISTANCE{
+		if dist_squared > MAX_CONTROL_DISTANCE * MAX_CONTROL_DISTANCE{
 			continue;
 		}
 		//distance from ball to player control spot
 		let dist = dist_squared.sqrt();
-		let t = dist / PLAYER_MAX_CONTROL_DISTANCE;
+		let t = dist / MAX_CONTROL_DISTANCE;
 		let inverted = 1. -t;
 		//distance factor is a smooth=step calculated effectiveness of player control
 		let distance_factor = inverted * inverted  * (3. - (2. * inverted));
@@ -700,15 +790,15 @@ fn ball_control(
 		
 	}
 
- 	ball_valocity_adjust_writer.write(BallAdjustMessage { absolute: false, velocity: time.delta_secs() * total_force, after_touch:None });
+ 	//ball_valocity_adjust_writer.write(BallAdjustMessage { absolute: false, velocity: time.delta_secs() * total_force, after_touch:None });
 }
-
+ */
 
 
 fn kick_event_handler(
 	mut commands:Commands,
 	mut kick_message_reader:MessageReader<KickMessage>,
-	mut active_player_message_writer:MessageWriter<ActivePlayerSwitch>,
+	mut active_player_message_writer:MessageWriter<ActivePlayerSwitchMessage>,
 	player_query:Query<(&PhysicalTranslation, &PhysicalRotation, &TargetRotation, &TeamMember), Without<Ball>>,
 	ball:Single<(Entity, &PhysicalTranslation, &Velocity), With<Ball>>,
 	match_state:Res<MatchState>,	
@@ -723,12 +813,9 @@ fn kick_event_handler(
 		let Ok((player_translation, player_rotation, target_rotation, team)) = player_query.get(message.entity) else {
 			continue; 
 		};
-		let Some(to_control_point) = to_nearest_control_point(ball_translation.0, player_translation.0, player_rotation.0) else{
-			continue;
-		};
-	
+		let to_control_point = to_nearest_control_point(ball_translation.0, player_translation.0, player_rotation.0);
 		//cant kick when ball beyond control distance
-		if to_control_point.length_squared() > PLAYER_MAX_CONTROL_DISTANCE * PLAYER_MAX_CONTROL_DISTANCE{
+		if to_control_point.length_squared() > MAX_CONTROL_DISTANCE * MAX_CONTROL_DISTANCE{
 			continue;
 		}
 		let shoot_dir = target_rotation.0 * Vec3::Z;
@@ -778,7 +865,7 @@ fn kick_event_handler(
 
 				ball_writer.write(BallAdjustMessage { absolute: true, velocity: shoot_vector * PASS_SPEED, after_touch: None });
 				info!("Pass to {} travel time {}", candidate.entity, eta);
-				active_player_message_writer.write(ActivePlayerSwitch(candidate.entity));
+				active_player_message_writer.write(ActivePlayerSwitchMessage(candidate.entity));
 			}
 			else{
 				ball_writer.write(BallAdjustMessage { absolute: true, velocity: shoot_dir * PASS_SPEED, after_touch: Some(team.0) });
@@ -789,3 +876,13 @@ fn kick_event_handler(
 }
 
 
+pub fn to_nearest_control_point(ball_translation:Vec3, player_translation:Vec3, player_rotation:Quat)->Vec3{
+	let to_ball = ball_translation.xz() - player_translation.xz();
+	let forward = player_rotation * Vec3::Z;
+	let forward_2d = forward.xz();
+	let angle_to_ball = -forward_2d.angle_to(to_ball);
+	let target_angle = angle_to_ball.clamp(-MAX_DRIBBLE_ANGLE, MAX_DRIBBLE_ANGLE);
+	//nearest control point
+	let control_point = (player_translation + (forward.rotate_y(target_angle) * OPTIMAL_CONTROL_DISTANCE)).with_y(BALL_GROUND_LEVEL); 
+	ball_translation - control_point
+}

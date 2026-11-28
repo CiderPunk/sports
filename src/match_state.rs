@@ -133,7 +133,7 @@ fn calculate_team_pressure(team:&[PlayerSnapshot], ball_location: Vec3, ball_vel
 		}
 	}
 	//pressure is chillness inverted
-	1. - chillness
+	chillness
 }
 
 

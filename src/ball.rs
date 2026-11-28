@@ -181,56 +181,6 @@ fn after_touch(
 	}
 }
 
-fn dribble(
-	ball:Single<(&mut Ball, &mut Velocity, &PhysicalTranslation)>,
-	players:Query<(&PhysicalTranslation, &PhysicalRotation, &Velocity, Entity, &PlayerState), (With<Player>, Without<Ball>)>,
-	player_query:Query<&Player>,
-	mut gizmos: Gizmos,
-	time:Res<Time<Fixed>>,
-){
-	let (mut ball, mut ball_velocity,  ball_translation) = ball.into_inner();
-	if ball_translation.0.y > MAX_DRIBBLE_HEIGHT{ return; } //no dribbling high balls!
-	let mut closest:Option<ControlCandidate> = None;
-	
-	//find who controls the ball...
-	for (translation, rotation, velocity, entity, state) in players{
-		
-		match state{
-				PlayerState::None => (),
-				PlayerState::KickWindup(_) => (),
-				PlayerState::KickRecover(_) => continue,
-				PlayerState::Slide(_) => continue,
-				PlayerState::SlideRecover(_) => continue,
-		};
-
-		let Some(to_control_point) = to_nearest_control_point(ball_translation.0, translation.0, rotation.0) else{
-			continue;
-		};
-		gizmos.arrow(ball_translation.0, ball_translation.0 - to_control_point, bevy::color::palettes::css::RED);
-
-		let dist_squared = to_control_point.length_squared();
-		if dist_squared < PLAYER_MAX_CONTROL_DISTANCE * PLAYER_MAX_CONTROL_DISTANCE
-			&& (closest.is_none() || closest.unwrap().dist_squared > dist_squared){ 
-				closest = Some(ControlCandidate { dist_squared, entity, to_control_point, velocity:*velocity });
-			}
-	}
-
-	if let Some(candidate) = closest{
- 		let Ok(player) = player_query.get(candidate.entity) else{ panic!("Failed getting controling player entity");};
-		ball.possession = Some(candidate.entity);
-		let mut ball_vec = ball_velocity.to_vec3();
-		let vel_diff = candidate.velocity.to_vec3() - ball_vec;
-		let control_force = -candidate.to_control_point * player.distance_match_factor;
-		let speed_match_force = vel_diff * player.speed_match_factor;
-		let combined_force = control_force + speed_match_force;
-		ball_vec += time.delta_secs() * combined_force;
-
-		//update ball velocity
-		*ball_velocity = Velocity::from_vec3(ball_vec).unwrap_or(Velocity::ZERO);
-		//candidate.to_control_point
-		gizmos.arrow(ball_translation.0, ball_translation.0 + vel_diff, bevy::color::palettes::css::BLUE);
-	};
-}
 
 
 fn physics(
@@ -379,7 +329,9 @@ fn do_movement(
 							true
 						}
 						ColliderType::Sensor => {
+							//add to sensors already hit so we dont retrigger the same one this frame
 							sensors_collided.push(collision.entity);
+							//translate to the snesor collision location minus a bit to get inside it and avoid a retrigger
 							translation.0 = collision.point - collision_adjustment;
 							pitch_sensor_writer.write(PitchSensorMessage { entity: collision.entity, location: collision.point });
 							false
@@ -395,12 +347,10 @@ fn do_movement(
 				let approach_v = ball_v - target_velocity;
 				let normal_vec:Vec3 = collision.normal.into();
 				let approach_speed = approach_v.dot(normal_vec).min(0.);
-					
 				let next_ball_vel = ball_v - (1.0 + nearest_restitution) * approach_speed * normal_vec;
-				//info!("bounce! {}", restitution);
 				*ball_velocity = Velocity::from_vec3(next_ball_vel).unwrap_or(Velocity::ZERO);
-				ball_movement = ball_velocity.as_frame_motion(translation.0, 0., delta);
 			}
+			ball_movement = ball_velocity.as_frame_motion(translation.0, 0., delta);
 		}
 		else{
 			translation.0 = ball_movement.final_position();
